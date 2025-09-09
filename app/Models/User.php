@@ -53,4 +53,20 @@ class User extends Authenticatable
         return $this->hasOne(Student::class);
     }
 
+    /**
+     * Check if user can access Filament admin panel
+     */
+    public function canAccessFilament(): bool
+    {
+        return $this->email === 'hsnwww@gmail.com';
+    }
+
+    /**
+     * Check if user can access specific Filament pages
+     */
+    public function canAccessPanel(\Filament\Panel $panel): bool
+    {
+        return $this->canAccessFilament();
+    }
+
 }
