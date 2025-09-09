@@ -20,6 +20,7 @@ return new class extends Migration
             $table->integer('hizb');
             $table->integer('qrtr');
             $table->integer('jozo');
+            $table->timestamps();
         });
 
     }

@@ -14,6 +14,7 @@ return new class extends Migration
         Schema::create('surahs', function (Blueprint $table) {
             $table->id(); // هذا id يطابق رقم السورة
             $table->string('name'); // اسم السورة
+            $table->timestamps();
         });
 
     }
