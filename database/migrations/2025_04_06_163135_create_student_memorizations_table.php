@@ -14,7 +14,7 @@ return new class extends Migration {
             $table->foreignId('from_verse_id')->constrained('quran_verses');
             $table->foreignId('to_verse_id')->constrained('quran_verses');
             $table->string('note')->nullable();
-            $table->enum('type', ['permanent', 'temporary', 'test'])->default('permanent');
+            $table->enum('type', ['initial', 'review'])->default('permanent');
             $table->boolean('verified')->default(false);
             $table->timestamps();
         });

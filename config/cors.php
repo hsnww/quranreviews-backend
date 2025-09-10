@@ -37,6 +37,8 @@ return [
         'https://www.quranreview.app',
         'https://quranreview.app',
         'http://quran-review.test:3000',
+        'http://localhost:3000',
+        'http://127.0.0.1:3000',
     ],
 
     // السماح بروابط Preview من Vercel

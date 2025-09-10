@@ -82,7 +82,7 @@
 
 <div style="font-size: 10pt; color: #555; text-align: center; margin-top: 10px;">
     <div>{{ config('app.name') }}</div>
-    <div><a href="{{ config('app.url') }}" style="color: #555; text-decoration: none;">{{ config('app.url') }}</a></div>
+    <div><a href="https://www.quranreview.app/" style="color: #555; text-decoration: none;">https://www.quranreview.app/</a></div>
     <div>تاريخ الطباعة: {{ \Carbon\Carbon::now()->translatedFormat('l d M Y - h:i A') }}</div>
 </div>
 
