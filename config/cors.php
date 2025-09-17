@@ -34,8 +34,8 @@ return [
 
     // الدومينات المسموح بها (Production)
     'allowed_origins' => [
-        'https://www.quranreview.app',
-        'https://quranreview.app',
+        'https://www.quranrevision.app',
+        'https://quranrevision.app',
         'http://quran-review.test:3000',
         'http://localhost:3000',
         'http://127.0.0.1:3000',

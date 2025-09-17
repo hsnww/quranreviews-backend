@@ -283,3 +283,4 @@ NEXT_PUBLIC_API_URL=https://backend.quranreview.app/api
 - الوثائق: https://docs.quranreview.app
 
 **تاريخ آخر تحديث:** 10 سبتمبر 2025
+
