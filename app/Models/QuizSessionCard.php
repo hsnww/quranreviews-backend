@@ -11,6 +11,7 @@ class QuizSessionCard extends Model
         'quiz_session_id',
         'order_index',
         'sora_number',
+        'jozo',
         'verse_ids',
         'mistake_count',
     ];

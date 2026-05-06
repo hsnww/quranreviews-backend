@@ -8,105 +8,119 @@ use App\Models\StudentMemorization;
 use Illuminate\Support\Collection;
 
 /**
- * Builds memorization-quiz card windows for a student session.
+ * Memorization quiz windows: fixed {@see $versesPerCard}, optional per-juz coverage.
  *
- * Memorization source (matches existing app behaviour):
- * - Student rows in {@see StudentMemorization} define inclusive verse-id ranges
- *   (`from_verse_id` … `to_verse_id`).
- * - A verse is eligible only if its `id` falls inside at least one such range
- *   (same pattern as `reviewChunks` / `getMemorizationChunks`).
- * - Quiz candidates are those eligible verses further filtered by `jozo` ∈ selected juz ids
- *   (intersection with session parts).
+ * Memorization source matches {@see StudentMemorization} inclusive verse-id ranges
+ * ∩ {@see QuranVerse::$jozo} ∈ selected juz ids.
  *
- * Card windows:
- * - Group candidates by surah (`sora`).
- * - Within each surah, only sequences of consecutive `ayah` numbers are allowed (no cross-surah).
- * - Window length N is chosen per card from {4, 5, 6}.
- * - Duplicate identical verse-id sequences in one session are avoided when possible.
+ * @phpstan-type Window array{fingerprint:string, sora_number:int, verse_ids:list<int>, jozo:int}
  */
 final class QuizCardGeneratorService
 {
-    private const MIN_WINDOW = 4;
-
-    private const MAX_WINDOW = 6;
-
     /**
-     * @param  array<int>  $juzIds  Values 1–30 (`quran_verses.jozo`).
-     * @return array{cards: list<array{sora_number:int, verse_ids:list<int>}>, actual_count: int, warnings: list<string>}
+     * @param  array<int>  $juzIds  1–30 (`quran_verses.jozo`).
+     * @return array{cards: list<Window>, warnings: list<string>, failure_message: ?string}
      */
-    public function generate(Student $student, array $juzIds, int $requestedCardCount): array
-    {
+    public function generate(
+        Student $student,
+        array $juzIds,
+        int $requestedCardCount,
+        int $versesPerCard,
+        bool $ensureJuzCoverage,
+    ): array {
         $juzIds = array_values(array_unique(array_map('intval', $juzIds)));
+        $warnings = [];
 
         $memorizedIds = $this->memorizedVerseIds($student);
         if ($memorizedIds->isEmpty()) {
-            return ['cards' => [], 'actual_count' => 0, 'warnings' => ['لا يوجد محفوظ مسجل لهذا الطالب.']];
+            return [
+                'cards' => [],
+                'warnings' => [],
+                'failure_message' => 'لا يوجد محفوظ مسجل لهذا الطالب.',
+            ];
         }
 
         $candidates = QuranVerse::query()
             ->whereIn('id', $memorizedIds)
             ->whereIn('jozo', $juzIds)
             ->orderBy('id')
-            ->get(['id', 'sora', 'ayah', 'text']);
+            ->get(['id', 'sora', 'ayah', 'jozo']);
 
         if ($candidates->isEmpty()) {
-            return ['cards' => [], 'actual_count' => 0, 'warnings' => ['لا توجد آيات محفوظة ضمن الأجزاء المختارة.']];
+            return [
+                'cards' => [],
+                'warnings' => [],
+                'failure_message' => 'لا توجد آيات محفوظة ضمن الأجزاء المختارة.',
+            ];
         }
 
-        $windowsByLength = $this->collectWindowsByLength($candidates);
+        $fullPool = $this->collectWindowsOfLength($candidates, $versesPerCard);
+        if ($fullPool === []) {
+            return [
+                'cards' => [],
+                'warnings' => [],
+                'failure_message' => sprintf(
+                    'لا يمكن تشكيل بطاقة بطول %d آيات متتابعة ضمن المحفوظ والأجزاء المختارة.',
+                    $versesPerCard
+                ),
+            ];
+        }
 
         $usedFingerprints = [];
         $cards = [];
-        $warnings = [];
 
-        $maxIterations = max($requestedCardCount * 25, 50);
+        if ($ensureJuzCoverage) {
+            foreach ($juzIds as $juz) {
+                $subset = $candidates->filter(fn (QuranVerse $v) => (int) $v->jozo === $juz)->values();
+                $pool = $this->collectWindowsOfLength($subset, $versesPerCard);
+                $choice = $this->pickRandomUnusedWindow($pool, $usedFingerprints);
+                if ($choice === null) {
+                    return [
+                        'cards' => [],
+                        'warnings' => [],
+                        'failure_message' => sprintf(
+                            'تعذّر تغطية الجزء %d: لا توجد نافذة بطول %d آية ضمن المحفوظ في هذا الجزء.',
+                            $juz,
+                            $versesPerCard
+                        ),
+                    ];
+                }
+                $cards[] = $choice;
+            }
+        }
+
+        $maxIterations = max($requestedCardCount * 40, 80);
         $iterations = 0;
 
         while (count($cards) < $requestedCardCount && $iterations < $maxIterations) {
             $iterations++;
-
-            $order = [4, 5, 6];
-            shuffle($order);
-
-            $choice = null;
-            foreach ($order as $len) {
-                $choice = $this->pickRandomUnusedWindow($windowsByLength[$len] ?? [], $usedFingerprints);
-                if ($choice !== null) {
-                    break;
-                }
-            }
-
+            $choice = $this->pickRandomUnusedWindow($fullPool, $usedFingerprints);
             if ($choice === null) {
                 break;
             }
-
-            $fp = $choice['fingerprint'];
-            $usedFingerprints[$fp] = true;
-            $cards[] = [
-                'sora_number' => $choice['sora_number'],
-                'verse_ids' => $choice['verse_ids'],
-            ];
+            $cards[] = $choice;
         }
 
-        $actual = count($cards);
-        if ($actual < $requestedCardCount && $actual > 0) {
-            $warnings[] = sprintf(
-                'تعذّر توليد العدد المطلوب بالكامل؛ تم إنشاء %d بطاقة بدلاً من %d.',
-                $actual,
-                $requestedCardCount
-            );
+        if (count($cards) < $requestedCardCount) {
+            return [
+                'cards' => [],
+                'warnings' => [],
+                'failure_message' => sprintf(
+                    'تعذّر توليد %d بطاقة متميزة بطول %d آية لكل بطاقة؛ تأكد من المحفوظ أو خفّض عدد البطاقات.',
+                    $requestedCardCount,
+                    $versesPerCard
+                ),
+            ];
         }
 
         return [
             'cards' => $cards,
-            'actual_count' => $actual,
             'warnings' => $warnings,
+            'failure_message' => null,
         ];
     }
 
     /**
-     * Verse ids considered memorized for the student (union of inclusive ranges).
-     *
      * @return Collection<int, int>
      */
     public function memorizedVerseIds(Student $student): Collection
@@ -126,11 +140,6 @@ final class QuizCardGeneratorService
         return $ids->unique()->values();
     }
 
-    /**
-     * For each juz in $juzIds, true when at least one memorized verse has that `jozo`.
-     *
-     * @param  array<int>  $juzIds
-     */
     public function juzHasMemorizedAyah(Student $student, int $juz): bool
     {
         $memIds = $this->memorizedVerseIds($student);
@@ -145,39 +154,40 @@ final class QuizCardGeneratorService
     }
 
     /**
-     * @return array<int, list<array{fingerprint:string, sora_number:int, verse_ids:list<int>}>>
+     * @return list<Window>
      */
-    private function collectWindowsByLength(Collection $candidates): array
+    private function collectWindowsOfLength(Collection $candidates, int $n): array
     {
-        $byLength = [4 => [], 5 => [], 6 => []];
+        if ($n < 1) {
+            return [];
+        }
+
+        $windows = [];
 
         foreach ($candidates->groupBy('sora') as $soraNumber => $verses) {
-            /** @var Collection<int, QuranVerse> $sorted */
             $sorted = $verses->sortBy('ayah')->values();
             $count = $sorted->count();
 
-            for ($n = self::MIN_WINDOW; $n <= self::MAX_WINDOW; $n++) {
-                for ($i = 0; $i <= $count - $n; $i++) {
-                    $window = $sorted->slice($i, $n)->values();
-                    if (!$this->isConsecutiveAyahs($window)) {
-                        continue;
-                    }
-                    $verseIds = $window->pluck('id')->map(fn ($id) => (int) $id)->all();
-                    $fp = implode(',', $verseIds);
-                    $byLength[$n][] = [
-                        'fingerprint' => $fp,
-                        'sora_number' => (int) $soraNumber,
-                        'verse_ids' => $verseIds,
-                    ];
+            for ($i = 0; $i <= $count - $n; $i++) {
+                $window = $sorted->slice($i, $n)->values();
+                if (!$this->isConsecutiveAyahs($window)) {
+                    continue;
                 }
+
+                $verseIds = $window->pluck('id')->map(fn ($id) => (int) $id)->all();
+                $first = $window->first();
+                $windows[] = [
+                    'fingerprint' => implode(',', $verseIds),
+                    'sora_number' => (int) $soraNumber,
+                    'verse_ids' => $verseIds,
+                    'jozo' => (int) $first->jozo,
+                ];
             }
         }
 
-        foreach ($byLength as $n => $list) {
-            shuffle($byLength[$n]);
-        }
+        shuffle($windows);
 
-        return $byLength;
+        return $windows;
     }
 
     /**
@@ -197,9 +207,8 @@ final class QuizCardGeneratorService
     }
 
     /**
-     * @param  list<array{fingerprint:string, sora_number:int, verse_ids:list<int>}>  $pool
+     * @param  list<Window>  $pool
      * @param  array<string, bool>  $usedFingerprints
-     * @return array{fingerprint:string, sora_number:int, verse_ids:list<int>}|null
      */
     private function pickRandomUnusedWindow(array $pool, array &$usedFingerprints): ?array
     {
@@ -208,6 +217,9 @@ final class QuizCardGeneratorService
             return null;
         }
 
-        return $available[array_rand($available)];
+        $choice = $available[array_rand($available)];
+        $usedFingerprints[$choice['fingerprint']] = true;
+
+        return $choice;
     }
 }

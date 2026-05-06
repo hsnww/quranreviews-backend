@@ -59,9 +59,9 @@ class QuizCardGeneratorServiceTest extends TestCase
         ]);
 
         $service = new QuizCardGeneratorService;
-        $result = $service->generate($student, [2], 2);
+        $result = $service->generate($student, [2], 2, 4, false);
 
-        $this->assertSame(0, $result['actual_count']);
+        $this->assertNotNull($result['failure_message']);
         $this->assertSame([], $result['cards']);
     }
 }

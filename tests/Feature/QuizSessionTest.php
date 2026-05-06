@@ -16,29 +16,32 @@ class QuizSessionTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function seedSixVerseWindow(): array
+    /**
+     * @return list<QuranVerse>
+     */
+    private function seedSurahVerses(int $surahId, string $surahName, int $ayahStart, int $ayahEnd, int $jozo): array
     {
-        Surah::create(['id' => 1, 'name' => 'الفاتحة']);
+        Surah::query()->firstOrCreate(['id' => $surahId], ['name' => $surahName]);
 
         $verses = [];
-        for ($i = 1; $i <= 6; $i++) {
+        for ($a = $ayahStart; $a <= $ayahEnd; $a++) {
             $verses[] = QuranVerse::create([
-                'sora' => 1,
-                'ayah' => $i,
-                'text' => 'كلمة '.$i,
+                'sora' => $surahId,
+                'ayah' => $a,
+                'text' => 'كلمة '.$surahId.'_'.$a,
                 'page' => 1,
                 'hizb' => 1,
                 'qrtr' => 1,
-                'jozo' => 8,
+                'jozo' => $jozo,
             ]);
         }
 
         return $verses;
     }
 
-    public function test_create_quiz_session_returns_cards_within_memorized_and_selected_juz(): void
+    public function test_create_quiz_session_respects_verses_per_card_and_returns_jozo(): void
     {
-        $verses = $this->seedSixVerseWindow();
+        $verses = $this->seedSurahVerses(1, 'الفاتحة', 1, 15, 8);
 
         $user = User::factory()->create();
         $student = Student::create(['user_id' => $user->id]);
@@ -46,7 +49,7 @@ class QuizSessionTest extends TestCase
         StudentMemorization::create([
             'student_id' => $student->id,
             'from_verse_id' => $verses[0]->id,
-            'to_verse_id' => $verses[5]->id,
+            'to_verse_id' => $verses[count($verses) - 1]->id,
             'type' => 'initial',
             'verified' => false,
         ]);
@@ -56,33 +59,41 @@ class QuizSessionTest extends TestCase
         $response = $this->postJson('/api/quiz-sessions', [
             'juz_ids' => [8],
             'card_count' => 5,
+            'verses_per_card' => 4,
+            'ensure_juz_coverage' => false,
         ]);
 
         $response->assertCreated();
         $response->assertJsonPath('session_id', fn ($id) => is_numeric($id));
         $response->assertJsonPath('actual_card_count', 5);
+        $response->assertJsonPath('verses_per_card', 4);
         $response->assertJsonCount(5, 'cards');
 
-        $firstCardVerses = $response->json('cards.0.verses');
-        $this->assertGreaterThanOrEqual(4, count($firstCardVerses));
-        $this->assertLessThanOrEqual(6, count($firstCardVerses));
+        foreach ($response->json('cards') as $card) {
+            $this->assertSame(4, $card['verse_count']);
+            $this->assertCount(4, $card['verses']);
+            $this->assertSame(8, $card['jozo']);
+        }
 
         $session = QuizSession::firstOrFail();
         $this->assertSame((int) $user->id, (int) $session->user_id);
         $this->assertSame(QuizSession::STATUS_IN_PROGRESS, $session->status);
+        $this->assertSame(4, (int) $session->verses_per_card);
+        $this->assertFalse($session->ensure_juz_coverage);
     }
 
     public function test_create_session_rejects_juz_without_memorization(): void
     {
-        $this->seedSixVerseWindow();
+        $this->seedSurahVerses(1, 'الفاتحة', 1, 15, 8);
 
         $user = User::factory()->create();
         $student = Student::create(['user_id' => $user->id]);
 
+        $ids = QuranVerse::where('jozo', 8)->orderBy('id')->pluck('id');
         StudentMemorization::create([
             'student_id' => $student->id,
-            'from_verse_id' => QuranVerse::where('jozo', 8)->first()->id,
-            'to_verse_id' => QuranVerse::where('jozo', 8)->orderByDesc('id')->first()->id,
+            'from_verse_id' => $ids->first(),
+            'to_verse_id' => $ids->last(),
             'type' => 'initial',
             'verified' => false,
         ]);
@@ -92,6 +103,8 @@ class QuizSessionTest extends TestCase
         $response = $this->postJson('/api/quiz-sessions', [
             'juz_ids' => [8, 9],
             'card_count' => 5,
+            'verses_per_card' => 4,
+            'ensure_juz_coverage' => false,
         ]);
 
         $response->assertStatus(422);
@@ -100,9 +113,45 @@ class QuizSessionTest extends TestCase
         ]);
     }
 
+    public function test_ensure_juz_coverage_requires_one_card_per_selected_juz(): void
+    {
+        $v8 = $this->seedSurahVerses(1, 'الفاتحة', 1, 12, 8);
+        $v9 = $this->seedSurahVerses(2, 'البقرة', 1, 12, 9);
+
+        $user = User::factory()->create();
+        $student = Student::create(['user_id' => $user->id]);
+
+        $memIds = collect($v8)->merge(collect($v9))->pluck('id');
+        StudentMemorization::create([
+            'student_id' => $student->id,
+            'from_verse_id' => $memIds->min(),
+            'to_verse_id' => $memIds->max(),
+            'type' => 'initial',
+            'verified' => false,
+        ]);
+
+        Sanctum::actingAs($user);
+
+        $response = $this->postJson('/api/quiz-sessions', [
+            'juz_ids' => [8, 9],
+            'card_count' => 5,
+            'verses_per_card' => 4,
+            'ensure_juz_coverage' => true,
+        ]);
+
+        $response->assertCreated();
+
+        $jozos = collect($response->json('cards'))->pluck('jozo')->unique()->sort()->values()->all();
+        $this->assertContains(8, $jozos);
+        $this->assertContains(9, $jozos);
+
+        $session = QuizSession::firstOrFail();
+        $this->assertTrue($session->ensure_juz_coverage);
+    }
+
     public function test_patch_card_and_complete_session(): void
     {
-        $verses = $this->seedSixVerseWindow();
+        $verses = $this->seedSurahVerses(1, 'الفاتحة', 1, 15, 8);
 
         $user = User::factory()->create();
         $student = Student::create(['user_id' => $user->id]);
@@ -110,7 +159,7 @@ class QuizSessionTest extends TestCase
         StudentMemorization::create([
             'student_id' => $student->id,
             'from_verse_id' => $verses[0]->id,
-            'to_verse_id' => $verses[5]->id,
+            'to_verse_id' => $verses[count($verses) - 1]->id,
             'type' => 'initial',
             'verified' => false,
         ]);
@@ -120,6 +169,8 @@ class QuizSessionTest extends TestCase
         $create = $this->postJson('/api/quiz-sessions', [
             'juz_ids' => [8],
             'card_count' => 5,
+            'verses_per_card' => 4,
+            'ensure_juz_coverage' => false,
         ]);
 
         $create->assertCreated();

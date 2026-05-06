@@ -13,9 +13,11 @@ use Illuminate\Support\Facades\DB;
 
 class QuizSessionController extends Controller
 {
-    private const CARD_COUNT_MIN = 5;
-
     private const CARD_COUNT_MAX = 50;
+
+    private const VERSES_PER_CARD_MIN = 4;
+
+    private const VERSES_PER_CARD_MAX = 10;
 
     public function __construct(
         private QuizCardGeneratorService $cardGenerator,
@@ -36,15 +38,22 @@ class QuizSessionController extends Controller
         $validated = $request->validate([
             'juz_ids' => 'required|array|min:1',
             'juz_ids.*' => 'integer|between:1,30',
-            'card_count' => 'required|integer|between:'.self::CARD_COUNT_MIN.','.self::CARD_COUNT_MAX,
+            'card_count' => [
+                'required',
+                'integer',
+                'max:'.self::CARD_COUNT_MAX,
+            ],
+            'verses_per_card' => 'required|integer|between:'.self::VERSES_PER_CARD_MIN.','.self::VERSES_PER_CARD_MAX,
+            'ensure_juz_coverage' => 'sometimes|boolean',
         ], [
             'juz_ids.required' => 'يجب اختيار جزء واحد على الأقل.',
             'juz_ids.min' => 'يجب اختيار جزء واحد على الأقل.',
             'juz_ids.*.between' => 'رقم الجزء يجب أن يكون بين 1 و 30.',
-            'card_count.between' => sprintf(
-                'عدد البطاقات يجب أن يكون بين %d و %d.',
-                self::CARD_COUNT_MIN,
-                self::CARD_COUNT_MAX
+            'card_count.max' => sprintf('عدد البطاقات يجب ألا يزيد عن %d.', self::CARD_COUNT_MAX),
+            'verses_per_card.between' => sprintf(
+                'عدد الآيات لكل بطاقة يجب أن يكون بين %d و %d.',
+                self::VERSES_PER_CARD_MIN,
+                self::VERSES_PER_CARD_MAX
             ),
         ]);
 
@@ -56,6 +65,14 @@ class QuizSessionController extends Controller
         }
 
         $juzIds = array_values(array_unique($validated['juz_ids']));
+        $minCards = max(5, count($juzIds));
+
+        if ((int) $validated['card_count'] < $minCards) {
+            return response()->json([
+                'message' => sprintf('عدد البطاقات يجب ألا يقل عن %d لمطابقة عدد الأجزاء المختارة والحد الأدنى المعتمد.', $minCards),
+                'errors' => ['card_count' => [sprintf('الحد الأدنى %d.', $minCards)]],
+            ], 422);
+        }
 
         foreach ($juzIds as $juz) {
             if (!$this->cardGenerator->juzHasMemorizedAyah($student, $juz)) {
@@ -66,24 +83,33 @@ class QuizSessionController extends Controller
         }
 
         $requested = (int) $validated['card_count'];
-        $generated = $this->cardGenerator->generate($student, $juzIds, $requested);
+        $versesPerCard = (int) $validated['verses_per_card'];
+        $ensureCoverage = (bool) ($validated['ensure_juz_coverage'] ?? false);
 
-        if ($generated['actual_count'] === 0) {
-            $msg = $generated['warnings'][0] ?? 'تعذّر إنشاء بطاقات لهذا الاختيار.';
+        $generated = $this->cardGenerator->generate(
+            $student,
+            $juzIds,
+            $requested,
+            $versesPerCard,
+            $ensureCoverage,
+        );
 
+        if ($generated['failure_message'] !== null) {
             return response()->json([
-                'message' => $msg,
+                'message' => $generated['failure_message'],
                 'warnings' => $generated['warnings'],
             ], 422);
         }
 
-        $session = DB::transaction(function () use ($request, $validated, $juzIds, $generated, $requested) {
+        $session = DB::transaction(function () use ($request, $juzIds, $generated, $requested, $versesPerCard, $ensureCoverage) {
             $quiz = QuizSession::create([
                 'user_id' => $request->user()->id,
                 'status' => QuizSession::STATUS_IN_PROGRESS,
                 'juz_ids' => $juzIds,
+                'verses_per_card' => $versesPerCard,
+                'ensure_juz_coverage' => $ensureCoverage,
                 'requested_card_count' => $requested,
-                'actual_card_count' => $generated['actual_count'],
+                'actual_card_count' => count($generated['cards']),
                 'score_formula' => QuizScoreCalculator::formulaDescription(),
             ]);
 
@@ -92,6 +118,7 @@ class QuizSessionController extends Controller
                     'quiz_session_id' => $quiz->id,
                     'order_index' => $idx + 1,
                     'sora_number' => $card['sora_number'],
+                    'jozo' => $card['jozo'],
                     'verse_ids' => $card['verse_ids'],
                     'mistake_count' => 0,
                 ]);
@@ -200,6 +227,8 @@ class QuizSessionController extends Controller
             'session_id' => $session->id,
             'status' => $session->status,
             'juz_ids' => $session->juz_ids,
+            'verses_per_card' => $session->verses_per_card,
+            'ensure_juz_coverage' => (bool) $session->ensure_juz_coverage,
             'requested_card_count' => $session->requested_card_count,
             'actual_card_count' => $session->actual_card_count,
             'score' => $session->score,
@@ -222,12 +251,13 @@ class QuizSessionController extends Controller
         $verses = QuranVerse::query()
             ->whereIn('id', $ids)
             ->orderBy('ayah')
-            ->get(['id', 'sora', 'ayah', 'text']);
+            ->get(['id', 'sora', 'ayah', 'text', 'jozo']);
 
         return [
             'id' => $card->id,
             'order_index' => $card->order_index,
             'sora_number' => $card->sora_number,
+            'jozo' => $card->jozo !== null ? (int) $card->jozo : (int) ($verses->first()?->jozo ?? 0),
             'verse_count' => count($ids),
             'mistake_count' => (int) $card->mistake_count,
             'verses' => $verses->map(fn (QuranVerse $v) => [

@@ -16,6 +16,8 @@ class QuizSession extends Model
         'user_id',
         'status',
         'juz_ids',
+        'verses_per_card',
+        'ensure_juz_coverage',
         'requested_card_count',
         'actual_card_count',
         'score',
@@ -28,6 +30,7 @@ class QuizSession extends Model
     {
         return [
             'juz_ids' => 'array',
+            'ensure_juz_coverage' => 'boolean',
             'completed_at' => 'datetime',
         ];
     }
