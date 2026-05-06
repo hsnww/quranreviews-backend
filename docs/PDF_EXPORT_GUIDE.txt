@@ -1,0 +1,793 @@
+================================================================================
+                    دليل شامل لنظام تصدير الجداول إلى PDF
+                    ================================================
+                    باستخدام Laravel + mPDF + الخطوط العربية
+================================================================================
+
+📋 المحتويات:
+1. المتطلبات والحزم المطلوبة
+2. إعداد الخطوط العربية
+3. هيكل النظام
+4. الكود الكامل
+5. أمثلة عملية
+6. نصائح وحلول المشاكل
+7. تخصيصات إضافية
+
+================================================================================
+1. المتطلبات والحزم المطلوبة
+================================================================================
+
+📦 الحزم المطلوبة في composer.json:
+{
+    "require": {
+        "mpdf/mpdf": "^8.2",
+        "maatwebsite/excel": "^3.1"
+    }
+}
+
+🔧 تثبيت الحزم:
+composer require mpdf/mpdf
+composer require maatwebsite/excel
+
+================================================================================
+2. إعداد الخطوط العربية
+================================================================================
+
+📁 هيكل مجلد الخطوط:
+resources/fonts/
+├── Amiri-Regular.ttf
+├── Amiri-Bold.ttf
+├── Amiri-Italic.ttf
+├── Amiri-BoldItalic.ttf
+├── AmiriQuran.ttf
+├── AmiriQuranColored.ttf
+├── Cairo-Regular.ttf
+└── Cairo-Bold.ttf
+
+🔧 إعداد mPDF للخطوط:
+$mpdf = new Mpdf([
+    'mode' => 'utf-8',
+    'format' => 'A4-L',  // A4 Landscape
+    'default_font' => 'xbriyaz',  // الخط الافتراضي
+    'default_font_size' => 16,
+    'margin_top' => 10,
+    'margin_bottom' => 10,
+    'margin_left' => 10,
+    'margin_right' => 10,
+]);
+
+$mpdf->SetDirectionality('rtl');  // اتجاه النص من اليمين لليسار
+
+================================================================================
+3. هيكل النظام
+================================================================================
+
+📁 هيكل الملفات:
+app/
+├── Exports/
+│   └── ReviewPlanExport.php          # تصدير Excel
+├── Http/Controllers/Api/
+│   └── ReviewPlanExportController.php # تحكم التصدير
+└── Services/
+    └── PdfExportService.php          # خدمة PDF (اختياري)
+
+resources/views/exports/
+└── review-plan-pdf.blade.php         # قالب PDF
+
+routes/
+└── api.php                           # مسارات API
+
+================================================================================
+4. الكود الكامل
+================================================================================
+
+🔹 1. Controller للتصدير (ReviewPlanExportController.php):
+
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Exports\ReviewPlanExport;
+use App\Http\Controllers\Controller;
+use App\Models\ReviewPlan;
+use Illuminate\Http\Request;
+use Maatwebsite\Excel\Facades\Excel;
+use App\Models\User;
+use Laravel\Sanctum\PersonalAccessToken;
+use App\Models\QuranVerse;
+use Illuminate\Support\Str;
+use Mpdf\Mpdf;
+
+class ReviewPlanExportController extends Controller
+{
+    public function exportExcel(Request $request)
+    {
+        $accessToken = $request->bearerToken() ?? $request->query('token');
+
+        if (!$accessToken) {
+            return response()->json(['message' => 'Token not provided'], 401);
+        }
+
+        $tokenModel = PersonalAccessToken::findToken($accessToken);
+        $user = $tokenModel?->tokenable;
+
+        if (!$user || !$user->student) {
+            return response()->json(['message' => 'User or student not found'], 404);
+        }
+
+        $student = $user->student;
+        $filename = 'review-plan.xlsx';
+        return Excel::download(new ReviewPlanExport($student->id), $filename);
+    }
+
+    public function exportPdf(Request $request)
+    {
+        $accessToken = $request->bearerToken() ?? $request->query('token');
+
+        if (!$accessToken) {
+            return response()->json(['message' => 'Token not provided'], 401);
+        }
+
+        $tokenModel = PersonalAccessToken::findToken($accessToken);
+        $user = $tokenModel?->tokenable;
+
+        if (!$user || !$user->student) {
+            return response()->json(['message' => 'User or student not found'], 404);
+        }
+
+        $student = $user->student;
+
+        // جلب البيانات
+        $plans = ReviewPlan::where('student_id', $student->id)
+            ->orderBy('day_number')
+            ->get(['day_number', 'from_verse_id', 'to_verse_id', 'type']);
+
+        $verseIds = $plans->pluck('from_verse_id')
+            ->merge($plans->pluck('to_verse_id'))
+            ->unique();
+            
+        $verses = QuranVerse::with('surah')
+            ->whereIn('id', $verseIds)
+            ->get()
+            ->keyBy('id');
+
+        // تجهيز البيانات
+        $detailedPlans = $plans->map(function ($plan) use ($verses) {
+            $from = $verses[$plan->from_verse_id] ?? null;
+            $to = $verses[$plan->to_verse_id] ?? null;
+
+            return [
+                'day' => $plan->day_number,
+                'type' => $plan->type === 'new' ? 'جديد' : 'مراجعة',
+                'from_sora' => $from?->surah->name ?? 'غير معروف',
+                'from_ayah' => $from?->ayah ?? '-',
+                'from_text' => $from ? Str::limit($from->text, 100) : '-',
+                'to_sora' => $to?->surah->name ?? 'غير معروف',
+                'to_ayah' => $to?->ayah ?? '-',
+                'to_text' => $to ? Str::limit($to->text, 100) : '-',
+            ];
+        });
+
+        $studentName = $student->user->name ?? 'الطالب';
+        $studentInstitution = $student->institution ?? 'حلقة غير معروفة';
+
+        // إنشاء HTML
+        $html = view('exports.review-plan-pdf', [
+            'plans' => $detailedPlans,
+            'studentName' => $studentName,
+            'studentInstitution' => $studentInstitution,
+        ])->render();
+
+        // إعداد mPDF
+        $mpdf = new Mpdf([
+            'mode' => 'utf-8',
+            'format' => 'A4-L',
+            'default_font' => 'xbriyaz',
+            'default_font_size' => 16,
+            'margin_top' => 10,
+            'margin_bottom' => 10,
+            'margin_left' => 10,
+            'margin_right' => 10,
+        ]);
+        
+        $mpdf->SetDirectionality('rtl');
+        $mpdf->WriteHTML($html);
+
+        return response($mpdf->Output('', 'S'), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="review-plan.pdf"',
+        ]);
+    }
+}
+
+🔹 2. قالب Blade للPDF (review-plan-pdf.blade.php):
+
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+    <title>خطة المراجعة</title>
+
+    <style>
+        @page {
+            margin: 2cm 1.5cm;
+            @top-center {
+                content: "خطة المراجعة والحفظ - {{ $studentName }}";
+                font-size: 12pt;
+                font-weight: bold;
+            }
+            @bottom-center {
+                content: "{{ config('app.name', 'منصة مراجعة القرآن') }} - https://www.quranreview.app/";
+                font-size: 9pt;
+                color: #555;
+            }
+            @bottom-right {
+                content: "صفحة " counter(page) " من " counter(pages) " - تاريخ الطباعة: " "{{ \Carbon\Carbon::now()->translatedFormat('d/m/Y - h:i A') }}";
+                font-size: 8pt;
+                color: #666;
+            }
+        }
+
+        body {
+            font-family: 'xbriyaz', DejaVu Sans, sans-serif;
+            direction: rtl;
+            text-align: right;
+            font-size: 16px;
+            line-height: 1.3;
+            margin: 0;
+            padding: 0;
+        }
+
+        .page-break {
+            page-break-before: always;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #333;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 18pt;
+            font-weight: bold;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 8px;
+        }
+
+        th, td {
+            border: 1px solid #ccc;
+            padding: 6px 4px;
+            text-align: center;
+        }
+
+        th {
+            background-color: #f0f0f0;
+            font-weight: bold;
+            font-size: 12pt;
+        }
+
+        td {
+            font-size: 11pt;
+        }
+
+        .verse-text {
+            color: #444;
+            font-size: 11px;
+            text-align: right;
+            max-width: 150px;
+            word-wrap: break-word;
+        }
+
+        .day-cell {
+            font-weight: bold;
+            background-color: #f8f9fa;
+        }
+
+        .new-lesson {
+            background-color: #fceaea;
+        }
+
+        .review-lesson {
+            background-color: #e6f4ea;
+        }
+    </style>
+</head>
+<body>
+
+    @php
+        $plansArray = $plans->toArray();
+        
+        // تجميع الخطط حسب اليوم
+        $plansByDay = [];
+        foreach ($plansArray as $plan) {
+            $day = $plan['day'];
+            if (!isset($plansByDay[$day])) {
+                $plansByDay[$day] = [];
+            }
+            $plansByDay[$day][] = $plan;
+        }
+        
+        // تقسيم الأيام إلى مجموعات من 5 أيام
+        $days = array_keys($plansByDay);
+        $dayChunks = array_chunk($days, 5);
+        $totalPages = count($dayChunks);
+    @endphp
+
+    @foreach ($dayChunks as $pageIndex => $dayChunk)
+        @if ($pageIndex > 0)
+            <div class="page-break"></div>
+        @endif
+
+        <div class="header">
+            <h1>خطة المراجعة والحفظ</h1>
+            <div style="font-size: 12pt; margin-top: 5px;">
+                <span>الطالب: {{ $studentName }}</span>
+                <span> - </span>
+                <span>{{ $studentInstitution }}</span>
+            </div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>اليوم</th>
+                    <th>السورة</th>
+                    <th>من آية</th>
+                    <th>الآية</th>
+                    <th>السورة</th>
+                    <th>إلى آية</th>
+                    <th>الآية</th>
+                    <th>الدرس</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach ($dayChunk as $day)
+                    @foreach ($plansByDay[$day] as $plan)
+                        <tr class="{{ $plan['type'] === 'جديد' ? 'new-lesson' : 'review-lesson' }}">
+                            <td class="day-cell">{{ $plan['day'] }}</td>
+                            <td>{{ $plan['from_sora'] }}</td>
+                            <td>{{ $plan['from_ayah'] }}</td>
+                            <td class="verse-text">{{ $plan['from_text'] }}</td>
+                            <td>{{ $plan['to_sora'] }}</td>
+                            <td>{{ $plan['to_ayah'] }}</td>
+                            <td class="verse-text">{{ $plan['to_text'] }}</td>
+                            <td>{{ $plan['type'] }}</td>
+                        </tr>
+                    @endforeach
+                @endforeach
+            </tbody>
+        </table>
+
+        <div style="text-align: center; margin-top: 20px; font-size: 9pt; color: #666;">
+            <div style="margin-bottom: 5px;">{{ config('app.name', 'منصة مراجعة القرآن') }} - https://www.quranreview.app/</div>
+            <div>صفحة {{ $pageIndex + 1 }} من {{ $totalPages }} - تاريخ الطباعة: {{ \Carbon\Carbon::now()->translatedFormat('d/m/Y - h:i A') }}</div>
+        </div>
+    @endforeach
+
+</body>
+</html>
+
+🔹 3. مسارات API (routes/api.php):
+
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/export/excel', [ReviewPlanExportController::class, 'exportExcel']);
+    Route::get('/export/pdf', [ReviewPlanExportController::class, 'exportPdf']);
+});
+
+🔹 4. Export Class للExcel (ReviewPlanExport.php):
+
+<?php
+
+namespace App\Exports;
+
+use App\Models\ReviewPlan;
+use App\Models\QuranVerse;
+use Illuminate\Support\Collection;
+use Maatwebsite\Excel\Concerns\FromCollection;
+use Maatwebsite\Excel\Concerns\WithHeadings;
+use Illuminate\Support\Str;
+
+class ReviewPlanExport implements FromCollection, WithHeadings
+{
+    protected int $studentId;
+
+    public function __construct(int $studentId)
+    {
+        $this->studentId = $studentId;
+    }
+
+    public function collection(): Collection
+    {
+        $plans = ReviewPlan::where('student_id', $this->studentId)
+            ->orderBy('day_number')
+            ->get(['day_number', 'from_verse_id', 'to_verse_id', 'type']);
+
+        $verseIds = $plans->pluck('from_verse_id')
+            ->merge($plans->pluck('to_verse_id'))
+            ->unique();
+
+        $verses = QuranVerse::with('surah')
+            ->whereIn('id', $verseIds)
+            ->get()
+            ->keyBy('id');
+
+        return $plans->map(function ($plan) use ($verses) {
+            $from = $verses[$plan->from_verse_id] ?? null;
+            $to = $verses[$plan->to_verse_id] ?? null;
+
+            return [
+                'اليوم' => $plan->day_number,
+                'من (السورة)' => $from?->surah->name ?? 'غير معروف',
+                'من (رقم الآية)' => $from?->ayah ?? '-',
+                'من (نص الآية)' => $from ? Str::limit($from->text, 40) : '-',
+                'إلى (السورة)' => $to?->surah->name ?? 'غير معروف',
+                'إلى (رقم الآية)' => $to?->ayah ?? '-',
+                'إلى (نص الآية)' => $to ? Str::limit($to->text, 40) : '-',
+                'الدرس' => $plan->type === 'new' ? 'جديد' : 'مراجعة',
+            ];
+        });
+    }
+
+    public function headings(): array
+    {
+        return [
+            'اليوم',
+            'من (السورة)',
+            'من (رقم الآية)',
+            'من (نص الآية)',
+            'إلى (السورة)',
+            'إلى (رقم الآية)',
+            'إلى (نص الآية)',
+            'الدرس',
+        ];
+    }
+}
+
+================================================================================
+5. أمثلة عملية
+================================================================================
+
+🔹 مثال 1: تصدير PDF بسيط:
+
+public function simplePdfExport()
+{
+    $data = [
+        ['الاسم', 'العمر', 'المدينة'],
+        ['أحمد', '25', 'الرياض'],
+        ['فاطمة', '30', 'جدة'],
+    ];
+
+    $html = view('exports.simple-table', compact('data'))->render();
+    
+    $mpdf = new Mpdf([
+        'mode' => 'utf-8',
+        'format' => 'A4',
+        'default_font' => 'xbriyaz',
+    ]);
+    
+    $mpdf->SetDirectionality('rtl');
+    $mpdf->WriteHTML($html);
+    
+    return response($mpdf->Output('', 'S'), 200, [
+        'Content-Type' => 'application/pdf',
+        'Content-Disposition' => 'attachment; filename="data.pdf"',
+    ]);
+}
+
+🔹 مثال 2: PDF مع pagination:
+
+@php
+    $itemsPerPage = 10;
+    $totalPages = ceil(count($data) / $itemsPerPage);
+    $chunks = array_chunk($data, $itemsPerPage);
+@endphp
+
+@foreach ($chunks as $pageIndex => $chunk)
+    @if ($pageIndex > 0)
+        <div class="page-break"></div>
+    @endif
+    
+    <h2>صفحة {{ $pageIndex + 1 }} من {{ $totalPages }}</h2>
+    
+    <table>
+        @foreach ($chunk as $row)
+            <tr>
+                <td>{{ $row['name'] }}</td>
+                <td>{{ $row['age'] }}</td>
+            </tr>
+        @endforeach
+    </table>
+@endforeach
+
+🔹 مثال 3: PDF مع headers و footers:
+
+@page {
+    @top-center {
+        content: "عنوان التقرير";
+        font-size: 14pt;
+        font-weight: bold;
+    }
+    @bottom-center {
+        content: "اسم الشركة - الموقع";
+        font-size: 10pt;
+    }
+    @bottom-right {
+        content: "صفحة " counter(page) " من " counter(pages);
+        font-size: 9pt;
+    }
+}
+
+================================================================================
+6. نصائح وحلول المشاكل
+================================================================================
+
+⚠️ مشاكل شائعة وحلولها:
+
+1. مشكلة الخطوط العربية:
+   - تأكد من وجود الخطوط في مجلد resources/fonts/
+   - استخدم 'xbriyaz' كخط افتراضي
+   - تأكد من SetDirectionality('rtl')
+
+2. مشكلة الترميز:
+   - استخدم 'mode' => 'utf-8'
+   - تأكد من <meta charset="utf-8">
+   - استخدم HTML entities للرموز الخاصة
+
+3. مشكلة Pagination:
+   - استخدم array_chunk() لتقسيم البيانات
+   - أضف page-break-before: always
+   - احسب العدد الإجمالي للصفحات
+
+4. مشكلة الأداء:
+   - استخدم lazy loading للبيانات الكبيرة
+   - قلل من عدد الاستعلامات
+   - استخدم cache للبيانات الثابتة
+
+5. مشكلة الذاكرة:
+   - زد memory_limit في PHP
+   - استخدم chunk() للبيانات الكبيرة
+   - أضف garbage collection
+
+🔧 تحسينات الأداء:
+
+// استخدام chunk للبيانات الكبيرة
+$plans->chunk(100, function ($chunk) {
+    // معالجة البيانات
+});
+
+// استخدام cache
+$data = Cache::remember('export_data', 3600, function () {
+    return $this->getData();
+});
+
+// تحسين الاستعلامات
+$plans = ReviewPlan::with(['verses.surah'])
+    ->where('student_id', $studentId)
+    ->orderBy('day_number')
+    ->get();
+
+================================================================================
+7. تخصيصات إضافية
+================================================================================
+
+🎨 تخصيص الألوان:
+
+.new-lesson {
+    background-color: #fceaea;  /* أحمر فاتح */
+}
+
+.review-lesson {
+    background-color: #e6f4ea;  /* أخضر فاتح */
+}
+
+.header {
+    background: linear-gradient(45deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+📊 تخصيص الجداول:
+
+table {
+    border-collapse: collapse;
+    width: 100%;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+th {
+    background: linear-gradient(45deg, #f093fb 0%, #f5576c 100%);
+    color: white;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+td {
+    border-bottom: 1px solid #ddd;
+    transition: background-color 0.3s;
+}
+
+tr:hover {
+    background-color: #f5f5f5;
+}
+
+📱 تخصيص الصفحات:
+
+@page {
+    size: A4 landscape;
+    margin: 2cm;
+    @top-center {
+        content: "عنوان الصفحة";
+        border-bottom: 2px solid #333;
+        padding-bottom: 10px;
+    }
+}
+
+🔄 تخصيص Pagination:
+
+.page-break {
+    page-break-before: always;
+    page-break-inside: avoid;
+}
+
+.page-number {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    font-size: 10pt;
+    color: #666;
+}
+
+================================================================================
+8. ملفات إضافية مفيدة
+================================================================================
+
+🔹 خدمة PDF منفصلة (PdfExportService.php):
+
+<?php
+
+namespace App\Services;
+
+use Mpdf\Mpdf;
+use Illuminate\Support\Facades\View;
+
+class PdfExportService
+{
+    public function generatePdf($template, $data, $filename = 'document.pdf')
+    {
+        $html = View::make($template, $data)->render();
+        
+        $mpdf = new Mpdf([
+            'mode' => 'utf-8',
+            'format' => 'A4-L',
+            'default_font' => 'xbriyaz',
+            'default_font_size' => 16,
+        ]);
+        
+        $mpdf->SetDirectionality('rtl');
+        $mpdf->WriteHTML($html);
+        
+        return $mpdf->Output('', 'S');
+    }
+}
+
+🔹 Middleware للتحقق من الصلاحيات:
+
+<?php
+
+namespace App\Http\Middleware;
+
+use Closure;
+use Illuminate\Http\Request;
+
+class CheckExportPermission
+{
+    public function handle(Request $request, Closure $next)
+    {
+        if (!$request->user()->can_export) {
+            return response()->json(['message' => 'غير مسموح بالتصدير'], 403);
+        }
+        
+        return $next($request);
+    }
+}
+
+================================================================================
+9. اختبار النظام
+================================================================================
+
+🧪 اختبارات وحدة:
+
+public function testPdfExport()
+{
+    $user = User::factory()->create();
+    $student = Student::factory()->create(['user_id' => $user->id]);
+    
+    $response = $this->actingAs($user)
+        ->get('/api/export/pdf');
+    
+    $response->assertStatus(200);
+    $response->assertHeader('Content-Type', 'application/pdf');
+}
+
+🔍 اختبار الأداء:
+
+public function testLargeDataExport()
+{
+    $startTime = microtime(true);
+    
+    // إنشاء بيانات كبيرة
+    $plans = ReviewPlan::factory()->count(1000)->create();
+    
+    $response = $this->get('/api/export/pdf');
+    
+    $endTime = microtime(true);
+    $executionTime = $endTime - $startTime;
+    
+    $this->assertLessThan(30, $executionTime); // أقل من 30 ثانية
+    $response->assertStatus(200);
+}
+
+================================================================================
+10. نصائح النشر والإنتاج
+================================================================================
+
+🚀 إعدادات الإنتاج:
+
+1. تحسين الذاكرة:
+   memory_limit = 512M
+   max_execution_time = 300
+
+2. تحسين mPDF:
+   $mpdf = new Mpdf([
+       'mode' => 'utf-8',
+       'format' => 'A4-L',
+       'default_font' => 'xbriyaz',
+       'tempDir' => storage_path('app/temp'), // مجلد مؤقت
+   ]);
+
+3. استخدام Queue للتصدير الكبير:
+   dispatch(new ExportPdfJob($userId));
+
+4. إضافة Cache:
+   Cache::remember("export_{$userId}", 3600, function() {
+       return $this->generatePdf();
+   });
+
+================================================================================
+11. خلاصة
+================================================================================
+
+✅ المميزات المطبقة:
+- دعم كامل للخطوط العربية
+- Pagination تلقائي (5 أيام لكل صفحة)
+- Headers و Footers ديناميكية
+- ألوان مختلفة للدروس الجديدة والمراجعة
+- ترقيم الصفحات
+- تاريخ الطباعة
+- معلومات الطالب والمؤسسة
+
+✅ الملفات المطلوبة:
+- Controller للتحكم
+- Blade template للتصميم
+- Export class للExcel
+- Routes للAPI
+- Fonts في resources/fonts/
+
+✅ الحزم المطلوبة:
+- mpdf/mpdf
+- maatwebsite/excel
+
+هذا النظام قابل للتطبيق على أي مشروع Laravel يحتاج لتصدير جداول إلى PDF مع دعم كامل للعربية.
+
+================================================================================
+📞 للدعم والمساعدة:
+- البريد الإلكتروني: support@eservices.ws
+- الموقع: https://eservices.ws
+- التاريخ: {{ date('Y-m-d') }}
+================================================================================

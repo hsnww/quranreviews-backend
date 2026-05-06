@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use App\Models\Surah;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 
 class StudentMemorizationController extends Controller
 {
@@ -153,46 +154,72 @@ class StudentMemorizationController extends Controller
     public function getMemorizationChunks(Request $request)
     {
         $student = $request->user()->student;
+        $validated = $request->validate([
+            'jozo' => 'nullable|integer|between:1,30',
+        ]);
+        $jozo = $validated['jozo'] ?? null;
 
-        // جلب مقاطع المحفوظ
-        $memorizedRanges = $student->memorizedParts->map(function ($part) {
-            $from = min($part->from_verse_id, $part->to_verse_id);
-            $to = max($part->from_verse_id, $part->to_verse_id);
-            return [$from, $to];
-        });
+        return response()->json(
+            Cache::remember(
+                $this->memorizationChunksCacheKey($student->id, $jozo),
+                now()->addMinutes(3),
+                function () use ($student, $jozo) {
+                    // جلب مقاطع المحفوظ
+                    $memorizedRanges = $student->memorizedParts()
+                        ->select('from_verse_id', 'to_verse_id')
+                        ->get()
+                        ->map(function ($part) {
+                            $from = min($part->from_verse_id, $part->to_verse_id);
+                            $to = max($part->from_verse_id, $part->to_verse_id);
+                            return [$from, $to];
+                        });
 
-        // جلب جميع الأرباع المميزة
-        $qrtrs = QuranVerse::select('qrtr', 'jozo', 'hizb', 'sora')
-            ->distinct()
-            ->orderBy('qrtr')
-            ->get();
+                    // استعلام واحد فقط لكل الآيات المطلوبة (مع فلترة الجزء إن وُجدت)
+                    $versesQuery = QuranVerse::query()
+                        ->select('id', 'qrtr', 'jozo', 'hizb', 'sora')
+                        ->when($jozo !== null, fn ($q) => $q->where('jozo', $jozo))
+                        ->orderBy('jozo')
+                        ->orderBy('hizb')
+                        ->orderBy('qrtr')
+                        ->orderBy('id');
 
-        $surahNames = Surah::pluck('name', 'id'); // [78 => "النبأ", ...]
+                    $verses = $versesQuery->get();
 
-        // تكوين الرد النهائي
-        $chunks = $qrtrs->map(function ($chunk) use ($memorizedRanges, $surahNames) {
-            $verseIds = QuranVerse::where('qrtr', $chunk->qrtr)->pluck('id');
-
-            $isMemorized = $verseIds->every(function ($verseId) use ($memorizedRanges) {
-                foreach ($memorizedRanges as [$from, $to]) {
-                    if ($verseId >= $from && $verseId <= $to) {
-                        return true;
+                    if ($verses->isEmpty()) {
+                        return [];
                     }
+
+                    $surahNames = Surah::select('id', 'name')->pluck('name', 'id'); // [78 => "النبأ", ...]
+
+                    $chunks = $verses
+                        ->groupBy(fn ($verse) => "{$verse->qrtr}-{$verse->jozo}-{$verse->hizb}-{$verse->sora}")
+                        ->map(function ($groupedVerses) use ($memorizedRanges, $surahNames) {
+                            $first = $groupedVerses->first();
+
+                            $isMemorized = $groupedVerses->every(function ($verse) use ($memorizedRanges) {
+                                foreach ($memorizedRanges as [$from, $to]) {
+                                    if ($verse->id >= $from && $verse->id <= $to) {
+                                        return true;
+                                    }
+                                }
+                                return false;
+                            });
+
+                            return [
+                                'qrtr' => $first->qrtr,
+                                'jozo' => $first->jozo,
+                                'hizb' => $first->hizb,
+                                'sora' => $first->sora,
+                                'sora_name' => $surahNames[$first->sora] ?? '',
+                                'memorized' => $isMemorized,
+                            ];
+                        })
+                        ->values();
+
+                    return $chunks;
                 }
-                return false;
-            });
-
-            return [
-                'qrtr' => $chunk->qrtr,
-                'jozo' => $chunk->jozo,
-                'hizb' => $chunk->hizb,
-                'sora' => $chunk->sora,
-                'sora_name' => $surahNames[$chunk->sora] ?? '',
-                'memorized' => $isMemorized,
-            ];
-        });
-
-        return response()->json($chunks);
+            )
+        );
     }
 
     public function updateStudentMemorization(Request $request)
@@ -230,9 +257,24 @@ class StudentMemorizationController extends Controller
             ]);
         }
 
+        $this->clearMemorizationChunksCache($student->id);
+
         return response()->json([
             'message' => 'تم حفظ المحفوظات بنجاح.',
         ]);
+    }
+
+    private function memorizationChunksCacheKey(int $studentId, ?int $jozo): string
+    {
+        return sprintf('student_memorization_chunks:%d:%s', $studentId, $jozo ?? 'all');
+    }
+
+    private function clearMemorizationChunksCache(int $studentId): void
+    {
+        Cache::forget($this->memorizationChunksCacheKey($studentId, null));
+        for ($jozo = 1; $jozo <= 30; $jozo++) {
+            Cache::forget($this->memorizationChunksCacheKey($studentId, $jozo));
+        }
     }
 
     // داخل StudentMemorizationController
