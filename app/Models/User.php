@@ -55,6 +55,11 @@ class User extends Authenticatable implements FilamentUser
         return $this->hasOne(Student::class);
     }
 
+    public function quizSessions()
+    {
+        return $this->hasMany(QuizSession::class);
+    }
+
     /**
      * Check if user can access Filament admin panel
      */

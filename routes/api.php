@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Auth;
 use App\Http\Controllers\Api\ReviewPlanController;
 use App\Http\Controllers\Api\StudentMemorizationController;
 use App\Http\Controllers\Api\ReviewPlanExportController;
+use App\Http\Controllers\Api\QuizSessionController;
 use Illuminate\Support\Facades\Route;
 
 
@@ -40,6 +41,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/verses/hizb/{hizb}', [QuranController::class, 'getByHizb']);
 
     Route::delete('/review-plans', [ReviewPlanController::class, 'destroy']);
+
+    Route::get('/quiz-sessions', [QuizSessionController::class, 'index']);
+    Route::post('/quiz-sessions', [QuizSessionController::class, 'store'])
+        ->middleware('throttle:quiz-session-create');
+    Route::get('/quiz-sessions/{quiz_session}', [QuizSessionController::class, 'show']);
+    Route::patch('/quiz-sessions/{quiz_session}/cards/{quiz_session_card}', [QuizSessionController::class, 'updateCard']);
+    Route::post('/quiz-sessions/{quiz_session}/complete', [QuizSessionController::class, 'complete']);
 
 });
 
