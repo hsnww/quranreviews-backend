@@ -207,6 +207,17 @@ class QuizSessionController extends Controller
         ]);
     }
 
+    public function destroy(Request $request, QuizSession $quiz_session)
+    {
+        $this->authorizeSession($request, $quiz_session);
+
+        $quiz_session->delete();
+
+        return response()->json([
+            'message' => 'تم حذف السجل بنجاح',
+        ]);
+    }
+
     private function authorizeSession(Request $request, QuizSession $quiz_session): void
     {
         abort_if((int) $quiz_session->user_id !== (int) $request->user()->id, 403);

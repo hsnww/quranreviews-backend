@@ -48,6 +48,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/quiz-sessions/{quiz_session}', [QuizSessionController::class, 'show']);
     Route::patch('/quiz-sessions/{quiz_session}/cards/{quiz_session_card}', [QuizSessionController::class, 'updateCard']);
     Route::post('/quiz-sessions/{quiz_session}/complete', [QuizSessionController::class, 'complete']);
+    Route::delete('/quiz-sessions/{quiz_session}', [QuizSessionController::class, 'destroy']);
 
 });
 

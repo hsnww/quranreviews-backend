@@ -194,4 +194,67 @@ class QuizSessionTest extends TestCase
         $session = QuizSession::findOrFail($sessionId);
         $this->assertTrue($session->isCompleted());
     }
+
+    public function test_delete_session_for_owner_succeeds(): void
+    {
+        $owner = User::factory()->create();
+        $session = QuizSession::create([
+            'user_id' => $owner->id,
+            'status' => QuizSession::STATUS_IN_PROGRESS,
+            'juz_ids' => [8],
+            'verses_per_card' => 4,
+            'ensure_juz_coverage' => false,
+            'requested_card_count' => 5,
+            'actual_card_count' => 5,
+        ]);
+
+        QuizSession::findOrFail($session->id)->cards()->create([
+            'order_index' => 1,
+            'sora_number' => 1,
+            'jozo' => 8,
+            'verse_ids' => [1, 2, 3, 4],
+            'mistake_count' => 0,
+        ]);
+
+        Sanctum::actingAs($owner);
+
+        $response = $this->deleteJson("/api/quiz-sessions/{$session->id}");
+
+        $response->assertOk();
+        $response->assertJsonFragment(['message' => 'تم حذف السجل بنجاح']);
+        $this->assertDatabaseMissing('quiz_sessions', ['id' => $session->id]);
+        $this->assertDatabaseMissing('quiz_session_cards', ['quiz_session_id' => $session->id]);
+    }
+
+    public function test_delete_session_for_other_user_returns_403(): void
+    {
+        $owner = User::factory()->create();
+        $other = User::factory()->create();
+
+        $session = QuizSession::create([
+            'user_id' => $owner->id,
+            'status' => QuizSession::STATUS_IN_PROGRESS,
+            'juz_ids' => [8],
+            'verses_per_card' => 4,
+            'ensure_juz_coverage' => false,
+            'requested_card_count' => 5,
+            'actual_card_count' => 5,
+        ]);
+
+        Sanctum::actingAs($other);
+
+        $response = $this->deleteJson("/api/quiz-sessions/{$session->id}");
+
+        $response->assertForbidden();
+    }
+
+    public function test_delete_non_existing_session_returns_404(): void
+    {
+        $user = User::factory()->create();
+        Sanctum::actingAs($user);
+
+        $response = $this->deleteJson('/api/quiz-sessions/999999');
+
+        $response->assertNotFound();
+    }
 }
