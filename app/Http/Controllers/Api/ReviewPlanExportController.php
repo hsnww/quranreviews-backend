@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Exports\ReviewPlanExport;
 use App\Http\Controllers\Controller;
 use App\Models\ReviewPlan;
+use App\Services\AyahExcerptService;
 use Illuminate\Http\Request;
 use Maatwebsite\Excel\Facades\Excel;
 use App\Models\User;
@@ -16,6 +17,10 @@ use Mpdf\Mpdf;
 
 class ReviewPlanExportController extends Controller
 {
+    public function __construct(
+        private AyahExcerptService $ayahExcerptService,
+    ) {}
+
     public function exportExcel(Request $request)
     {
         $accessToken = $request->bearerToken() ?? $request->query('token');
@@ -70,10 +75,10 @@ class ReviewPlanExportController extends Controller
                 'type' => $plan->type === 'new' ? 'جديد' : 'مراجعة', // ✅ مضاف
                 'from_sora' => $from?->surah->name ?? 'غير معروف',
                 'from_ayah' => $from?->ayah ?? '-',
-                'from_text' => $from ? \Str::limit($from->text, 100) : '-',
+                'from_text' => $from ? $this->ayahExcerptService->excerptSmart($from->text) : '-',
                 'to_sora' => $to?->surah->name ?? 'غير معروف',
                 'to_ayah' => $to?->ayah ?? '-',
-                'to_text' => $to ? \Str::limit($to->text, 100) : '-',
+                'to_text' => $to ? $this->ayahExcerptService->excerptSmart($to->text) : '-',
             ];
         });
         $studentName = $student->user->name ?? 'الطالب';

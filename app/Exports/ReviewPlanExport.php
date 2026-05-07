@@ -4,18 +4,20 @@ namespace App\Exports;
 
 use App\Models\ReviewPlan;
 use App\Models\QuranVerse;
+use App\Services\AyahExcerptService;
 use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\WithHeadings;
-use Illuminate\Support\Str;
 
 class ReviewPlanExport implements FromCollection, WithHeadings
 {
     protected int $studentId;
+    private AyahExcerptService $ayahExcerptService;
 
     public function __construct(int $studentId)
     {
         $this->studentId = $studentId;
+        $this->ayahExcerptService = app(AyahExcerptService::class);
     }
 
     public function collection(): Collection
@@ -42,10 +44,10 @@ class ReviewPlanExport implements FromCollection, WithHeadings
                 'اليوم' => $plan->day_number,
                 'من (السورة)' => $from?->surah->name ?? 'غير معروف',
                 'من (رقم الآية)' => $from?->ayah ?? '-',
-                'من (نص الآية)' => $from ? Str::limit($from->text, 40) : '-',
+                'من (نص الآية)' => $from ? $this->ayahExcerptService->excerptSmart($from->text) : '-',
                 'إلى (السورة)' => $to?->surah->name ?? 'غير معروف',
                 'إلى (رقم الآية)' => $to?->ayah ?? '-',
-                'إلى (نص الآية)' => $to ? Str::limit($to->text, 40) : '-',
+                'إلى (نص الآية)' => $to ? $this->ayahExcerptService->excerptSmart($to->text) : '-',
                 'الدرس' => $plan->type === 'new' ? 'جديد' : 'مراجعة',
 
             ];

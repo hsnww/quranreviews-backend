@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\QuranVerse;
 use App\Models\QuizSession;
 use App\Models\QuizSessionCard;
+use App\Services\AyahExcerptService;
 use App\Services\QuizCardGeneratorService;
 use App\Services\QuizScoreCalculator;
 use Illuminate\Http\Request;
@@ -21,6 +22,7 @@ class QuizSessionController extends Controller
 
     public function __construct(
         private QuizCardGeneratorService $cardGenerator,
+        private AyahExcerptService $ayahExcerptService,
     ) {}
 
     public function index(Request $request)
@@ -271,6 +273,7 @@ class QuizSessionController extends Controller
             'jozo' => $card->jozo !== null ? (int) $card->jozo : (int) ($verses->first()?->jozo ?? 0),
             'verse_count' => count($ids),
             'mistake_count' => (int) $card->mistake_count,
+            'first_hint_text' => $this->ayahExcerptService->excerptSmart((string) ($verses->first()?->text ?? '')),
             'verses' => $verses->map(fn (QuranVerse $v) => [
                 'verse_number' => (int) $v->ayah,
                 'text' => $v->text,

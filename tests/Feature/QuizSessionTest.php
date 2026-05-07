@@ -8,6 +8,7 @@ use App\Models\Student;
 use App\Models\StudentMemorization;
 use App\Models\Surah;
 use App\Models\User;
+use App\Services\AyahExcerptService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -73,7 +74,12 @@ class QuizSessionTest extends TestCase
             $this->assertSame(4, $card['verse_count']);
             $this->assertCount(4, $card['verses']);
             $this->assertSame(8, $card['jozo']);
+            $this->assertArrayHasKey('first_hint_text', $card);
         }
+
+        $firstCard = $response->json('cards.0');
+        $expectedHint = app(AyahExcerptService::class)->excerptSmart($firstCard['verses'][0]['text']);
+        $this->assertSame($expectedHint, $firstCard['first_hint_text']);
 
         $session = QuizSession::firstOrFail();
         $this->assertSame((int) $user->id, (int) $session->user_id);
@@ -189,10 +195,46 @@ class QuizSessionTest extends TestCase
 
         $complete->assertOk();
         $complete->assertJsonPath('total_errors', 3);
-        $complete->assertJsonPath('score', 94); // max(0, 100 - 3*2)
+        $complete->assertJsonPath('score', 98.5); // max(0, 100 - 3*0.5)
 
         $session = QuizSession::findOrFail($sessionId);
         $this->assertTrue($session->isCompleted());
+    }
+
+    public function test_created_cards_are_unique_in_same_session(): void
+    {
+        $verses = $this->seedSurahVerses(1, 'الفاتحة', 1, 20, 8);
+
+        $user = User::factory()->create();
+        $student = Student::create(['user_id' => $user->id]);
+
+        StudentMemorization::create([
+            'student_id' => $student->id,
+            'from_verse_id' => $verses[0]->id,
+            'to_verse_id' => $verses[count($verses) - 1]->id,
+            'type' => 'initial',
+            'verified' => false,
+        ]);
+
+        Sanctum::actingAs($user);
+
+        $response = $this->postJson('/api/quiz-sessions', [
+            'juz_ids' => [8],
+            'card_count' => 8,
+            'verses_per_card' => 4,
+            'ensure_juz_coverage' => false,
+        ]);
+
+        $response->assertCreated();
+        $cards = collect($response->json('cards'));
+
+        $keys = $cards->map(function (array $card): string {
+            $first = $card['verses'][0]['verse_number'];
+            $last = $card['verses'][count($card['verses']) - 1]['verse_number'];
+            return $card['sora_number'].'-'.$first.'-'.$last;
+        });
+
+        $this->assertSame($keys->count(), $keys->unique()->count());
     }
 
     public function test_delete_session_for_owner_succeeds(): void

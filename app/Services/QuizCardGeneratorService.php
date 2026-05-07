@@ -13,7 +13,7 @@ use Illuminate\Support\Collection;
  * Memorization source matches {@see StudentMemorization} inclusive verse-id ranges
  * ∩ {@see QuranVerse::$jozo} ∈ selected juz ids.
  *
- * @phpstan-type Window array{fingerprint:string, sora_number:int, verse_ids:list<int>, jozo:int}
+ * @phpstan-type Window array{unique_key:string, sora_number:int, verse_ids:list<int>, jozo:int, from_verse_id:int, to_verse_id:int}
  */
 final class QuizCardGeneratorService
 {
@@ -66,14 +66,14 @@ final class QuizCardGeneratorService
             ];
         }
 
-        $usedFingerprints = [];
+        $usedUniqueKeys = [];
         $cards = [];
 
         if ($ensureJuzCoverage) {
             foreach ($juzIds as $juz) {
                 $subset = $candidates->filter(fn (QuranVerse $v) => (int) $v->jozo === $juz)->values();
                 $pool = $this->collectWindowsOfLength($subset, $versesPerCard);
-                $choice = $this->pickRandomUnusedWindow($pool, $usedFingerprints);
+                $choice = $this->pickRandomUniqueWindowWithRetry($pool, $usedUniqueKeys, 30);
                 if ($choice === null) {
                     return [
                         'cards' => [],
@@ -94,7 +94,7 @@ final class QuizCardGeneratorService
 
         while (count($cards) < $requestedCardCount && $iterations < $maxIterations) {
             $iterations++;
-            $choice = $this->pickRandomUnusedWindow($fullPool, $usedFingerprints);
+            $choice = $this->pickRandomUniqueWindowWithRetry($fullPool, $usedUniqueKeys, 30);
             if ($choice === null) {
                 break;
             }
@@ -176,11 +176,15 @@ final class QuizCardGeneratorService
 
                 $verseIds = $window->pluck('id')->map(fn ($id) => (int) $id)->all();
                 $first = $window->first();
+                $fromVerseId = $verseIds[0];
+                $toVerseId = $verseIds[count($verseIds) - 1];
                 $windows[] = [
-                    'fingerprint' => implode(',', $verseIds),
+                    'unique_key' => sprintf('%d-%d-%d', (int) $soraNumber, $fromVerseId, $toVerseId),
                     'sora_number' => (int) $soraNumber,
                     'verse_ids' => $verseIds,
                     'jozo' => (int) $first->jozo,
+                    'from_verse_id' => $fromVerseId,
+                    'to_verse_id' => $toVerseId,
                 ];
             }
         }
@@ -208,18 +212,34 @@ final class QuizCardGeneratorService
 
     /**
      * @param  list<Window>  $pool
-     * @param  array<string, bool>  $usedFingerprints
+     * @param  array<string, bool>  $usedUniqueKeys
      */
-    private function pickRandomUnusedWindow(array $pool, array &$usedFingerprints): ?array
+    private function pickRandomUniqueWindowWithRetry(array $pool, array &$usedUniqueKeys, int $maxAttempts): ?array
     {
-        $available = array_values(array_filter($pool, fn ($w) => empty($usedFingerprints[$w['fingerprint']])));
-        if ($available === []) {
+        if ($pool === []) {
             return null;
         }
 
-        $choice = $available[array_rand($available)];
-        $usedFingerprints[$choice['fingerprint']] = true;
+        $attempt = 0;
+        while ($attempt < $maxAttempts) {
+            $attempt++;
+            $choice = $pool[array_rand($pool)];
+            $key = (string) $choice['unique_key'];
+            if (!isset($usedUniqueKeys[$key])) {
+                $usedUniqueKeys[$key] = true;
+                return $choice;
+            }
+        }
 
-        return $choice;
+        // Final deterministic fallback when random retries hit duplicates.
+        foreach ($pool as $choice) {
+            $key = (string) $choice['unique_key'];
+            if (!isset($usedUniqueKeys[$key])) {
+                $usedUniqueKeys[$key] = true;
+                return $choice;
+            }
+        }
+
+        return null;
     }
 }

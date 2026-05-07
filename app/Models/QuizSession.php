@@ -31,6 +31,7 @@ class QuizSession extends Model
         return [
             'juz_ids' => 'array',
             'ensure_juz_coverage' => 'boolean',
+            'score' => 'float',
             'completed_at' => 'datetime',
         ];
     }
