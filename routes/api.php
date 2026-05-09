@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\ReviewPlanController;
 use App\Http\Controllers\Api\StudentMemorizationController;
 use App\Http\Controllers\Api\ReviewPlanExportController;
 use App\Http\Controllers\Api\QuizSessionController;
+use App\Http\Controllers\Api\RecitationPlannerController;
 use Illuminate\Support\Facades\Route;
 
 
@@ -49,6 +50,18 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/quiz-sessions/{quiz_session}/cards/{quiz_session_card}', [QuizSessionController::class, 'updateCard']);
     Route::post('/quiz-sessions/{quiz_session}/complete', [QuizSessionController::class, 'complete']);
     Route::delete('/quiz-sessions/{quiz_session}', [QuizSessionController::class, 'destroy']);
+
+    Route::get('/recitation/plans', [RecitationPlannerController::class, 'indexPlans']);
+    Route::post('/recitation/plans', [RecitationPlannerController::class, 'storePlan']);
+    Route::get('/recitation/plans/{plan}', [RecitationPlannerController::class, 'showPlan']);
+    Route::delete('/recitation/plans/{plan}', [RecitationPlannerController::class, 'destroyPlan']);
+    Route::post('/recitation/plans/{plan}/sessions', [RecitationPlannerController::class, 'upsertSessions']);
+    Route::post('/recitation/sessions/{session}/segments', [RecitationPlannerController::class, 'storeSegment']);
+    Route::patch('/recitation/segments/{segment}', [RecitationPlannerController::class, 'updateSegment']);
+    Route::delete('/recitation/segments/{segment}', [RecitationPlannerController::class, 'destroySegment']);
+    Route::post('/recitation/sessions/{session}/complete', [RecitationPlannerController::class, 'completeSession']);
+    Route::get('/recitation/archive', [RecitationPlannerController::class, 'archive']);
+    Route::get('/recitation/ayah-status', [RecitationPlannerController::class, 'ayahStatus']);
 
 });
 
