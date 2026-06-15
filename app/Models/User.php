@@ -75,6 +75,11 @@ class User extends Authenticatable implements FilamentUser
         return $this->hasMany(RecitationHistory::class);
     }
 
+    public function recitationBookmarks()
+    {
+        return $this->hasMany(RecitationBookmark::class);
+    }
+
     /**
      * Check if user can access Filament admin panel
      */

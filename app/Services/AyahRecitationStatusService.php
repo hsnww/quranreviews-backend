@@ -32,20 +32,35 @@ class AyahRecitationStatusService
                 });
             });
 
-        $futureScheduled = (clone $scheduledQuery)
-            ->whereDate('date', '>', now()->toDateString())
-            ->exists();
-
-        $nextScheduledDate = (clone $scheduledQuery)
-            ->whereDate('date', '>', now()->toDateString())
+        $scheduledSessions = (clone $scheduledQuery)
             ->orderBy('date')
-            ->value('date');
+            ->orderBy('id')
+            ->get(['date', 'prayer_name']);
 
-        if ($nextScheduledDate instanceof Carbon) {
-            $nextScheduledDate = $nextScheduledDate->toDateString();
+        $today = now()->toDateString();
+        $scheduledSessionsList = [];
+        $futureScheduled = false;
+        $nextScheduledDate = null;
+
+        foreach ($scheduledSessions as $session) {
+            $dateStr = $session->date instanceof Carbon
+                ? $session->date->toDateString()
+                : (string) $session->date;
+
+            $scheduledSessionsList[] = [
+                'date' => $dateStr,
+                'prayer_name' => $session->prayer_name,
+            ];
+
+            if ($dateStr > $today) {
+                $futureScheduled = true;
+                if ($nextScheduledDate === null || $dateStr < $nextScheduledDate) {
+                    $nextScheduledDate = $dateStr;
+                }
+            }
         }
 
-        $timesScheduled = (clone $scheduledQuery)->count();
+        $timesScheduled = count($scheduledSessionsList);
 
         $lastHistory = RecitationHistory::query()
             ->where('user_id', $userId)
@@ -97,6 +112,7 @@ class AyahRecitationStatusService
         return [
             'future_scheduled' => $futureScheduled,
             'next_scheduled_date' => $nextScheduledDate,
+            'scheduled_sessions' => $scheduledSessionsList,
             'last_recited_at' => $lastHistory?->date?->toDateString(),
             'last_recited_prayer' => $lastHistory?->prayer_name,
             'days_since_last_recitation' => $daysSince,

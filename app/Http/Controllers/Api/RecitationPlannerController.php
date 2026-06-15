@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreRecitationBookmarkRequest;
 use App\Http\Requests\StoreRecitationPlanRequest;
 use App\Http\Requests\StoreRecitationSegmentRequest;
 use App\Http\Requests\UpdateRecitationSegmentRequest;
 use App\Http\Requests\UpsertRecitationSessionsRequest;
+use App\Models\RecitationBookmark;
 use App\Models\RecitationHistory;
 use App\Models\RecitationPlan;
 use App\Models\RecitationSegment;
@@ -16,6 +18,7 @@ use App\Services\AyahRecitationStatusService;
 use App\Services\RecitationCompletionService;
 use App\Services\RecitationPlannerService;
 use App\Services\RecitationSegmentValidator;
+use App\Services\SurahRecitationSummaryService;
 use Illuminate\Http\Request;
 
 class RecitationPlannerController extends Controller
@@ -25,6 +28,7 @@ class RecitationPlannerController extends Controller
         private RecitationSegmentValidator $segmentValidator,
         private RecitationCompletionService $completionService,
         private AyahRecitationStatusService $ayahStatusService,
+        private SurahRecitationSummaryService $surahSummaryService,
     ) {}
 
     public function indexPlans(Request $request)
@@ -186,9 +190,61 @@ class RecitationPlannerController extends Controller
         );
     }
 
+    public function surahSummary(Request $request)
+    {
+        $validated = $request->validate([
+            'prayer' => ['nullable', 'in:fajr,maghrib,isha'],
+        ]);
+
+        return response()->json([
+            'data' => $this->surahSummaryService->getSummary(
+                (int) $request->user()->id,
+                $validated['prayer'] ?? null
+            ),
+        ]);
+    }
+
+    public function indexBookmarks(Request $request)
+    {
+        $bookmarks = RecitationBookmark::query()
+            ->where('user_id', $request->user()->id)
+            ->latest()
+            ->get();
+
+        return response()->json(['data' => $bookmarks]);
+    }
+
+    public function storeBookmark(StoreRecitationBookmarkRequest $request)
+    {
+        $payload = $request->validated();
+        $this->segmentValidator->validate($payload);
+
+        $bookmark = RecitationBookmark::query()->create([
+            ...$payload,
+            'user_id' => (int) $request->user()->id,
+        ]);
+
+        return response()->json($bookmark, 201);
+    }
+
+    public function destroyBookmark(Request $request, RecitationBookmark $bookmark)
+    {
+        $this->authorizeBookmark($request, $bookmark);
+        $bookmark->delete();
+
+        return response()->json([
+            'message' => 'تم حذف المقطع المحفوظ بنجاح',
+        ]);
+    }
+
     private function authorizePlan(Request $request, RecitationPlan $plan): void
     {
         abort_if((int) $plan->user_id !== (int) $request->user()->id, 403);
+    }
+
+    private function authorizeBookmark(Request $request, RecitationBookmark $bookmark): void
+    {
+        abort_if((int) $bookmark->user_id !== (int) $request->user()->id, 403);
     }
 
     private function authorizeSession(Request $request, RecitationSession $session): void
