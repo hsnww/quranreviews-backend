@@ -53,6 +53,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/recitation/plans', [RecitationPlannerController::class, 'indexPlans']);
     Route::post('/recitation/plans', [RecitationPlannerController::class, 'storePlan']);
+    Route::post('/recitation/plans/merge', [RecitationPlannerController::class, 'mergePlans']);
     Route::get('/recitation/plans/{plan}', [RecitationPlannerController::class, 'showPlan']);
     Route::delete('/recitation/plans/{plan}', [RecitationPlannerController::class, 'destroyPlan']);
     Route::post('/recitation/plans/{plan}/sessions', [RecitationPlannerController::class, 'upsertSessions']);

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\MergeRecitationPlansRequest;
 use App\Http\Requests\StoreRecitationBookmarkRequest;
 use App\Http\Requests\StoreRecitationPlanRequest;
 use App\Http\Requests\StoreRecitationSegmentRequest;
@@ -60,6 +61,27 @@ class RecitationPlannerController extends Controller
 
         return response()->json(
             $plan->load(['sessions.segments'])
+        );
+    }
+
+    /**
+     * يدمج عدة خطط متتالية (متلاصقة زمنياً) في خطة واحدة تغطي كامل المدى،
+     * ثم يحذف الخطط المصدر افتراضياً (أو يبقيها عند delete_sources=false).
+     */
+    public function mergePlans(MergeRecitationPlansRequest $request)
+    {
+        $data = $request->validated();
+
+        $plan = $this->plannerService->mergePlans(
+            (int) $request->user()->id,
+            $data['plan_ids'],
+            $data['title'] ?? null,
+            (bool) ($data['delete_sources'] ?? true),
+        );
+
+        return response()->json(
+            $plan->load(['sessions.segments']),
+            201
         );
     }
 
