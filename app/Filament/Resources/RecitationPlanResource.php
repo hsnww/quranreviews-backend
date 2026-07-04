@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\RecitationPlanResource\Pages;
 use App\Filament\Resources\RecitationPlanResource\RelationManagers\SessionsRelationManager;
 use App\Models\RecitationPlan;
+use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
@@ -21,7 +22,31 @@ class RecitationPlanResource extends Resource
 
     public static function form(Form $form): Form
     {
-        return $form->schema([]);
+        return $form
+            ->schema([
+                Forms\Components\TextInput::make('title')
+                    ->label('عنوان الخطة')
+                    ->required()
+                    ->maxLength(255),
+
+                Forms\Components\Select::make('status')
+                    ->label('الحالة')
+                    ->options([
+                        'active' => 'نشطة',
+                        'completed' => 'مكتملة',
+                        'archived' => 'مؤرشفة',
+                    ]),
+
+                Forms\Components\DatePicker::make('start_date')
+                    ->label('تاريخ البداية'),
+
+                Forms\Components\DatePicker::make('end_date')
+                    ->label('تاريخ النهاية'),
+
+                Forms\Components\Placeholder::make('user_name')
+                    ->label('المستخدم')
+                    ->content(fn (?RecitationPlan $record): string => $record?->user?->name ?? '—'),
+            ]);
     }
 
     public static function table(Table $table): Table
@@ -69,6 +94,7 @@ class RecitationPlanResource extends Resource
             ])
             ->actions([
                 Tables\Actions\ViewAction::make(),
+                Tables\Actions\EditAction::make(),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
@@ -89,6 +115,7 @@ class RecitationPlanResource extends Resource
         return [
             'index' => Pages\ListRecitationPlans::route('/'),
             'view' => Pages\ViewRecitationPlan::route('/{record}'),
+            'edit' => Pages\EditRecitationPlan::route('/{record}/edit'),
         ];
     }
 }
