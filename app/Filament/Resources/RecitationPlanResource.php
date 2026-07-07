@@ -16,9 +16,10 @@ class RecitationPlanResource extends Resource
     protected static ?string $model = RecitationPlan::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-book-open';
-    protected static ?string $navigationGroup = 'النشاط والتقدّم';
-    protected static ?string $label = 'خطة تلاوة';
-    protected static ?string $pluralLabel = 'خطط التلاوة';
+    protected static ?string $navigationGroup = 'الخطط';
+    protected static ?int $navigationSort = 3;
+    protected static ?string $label = 'خطة قراءة إمام';
+    protected static ?string $pluralLabel = 'خطط قراءة الإمام';
 
     public static function form(Form $form): Form
     {

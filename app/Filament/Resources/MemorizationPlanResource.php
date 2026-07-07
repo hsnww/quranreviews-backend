@@ -2,7 +2,7 @@
 
 namespace App\Filament\Resources;
 
-use App\Filament\Resources\ReviewPlanResource\Pages;
+use App\Filament\Resources\MemorizationPlanResource\Pages;
 use App\Models\ReviewPlan;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
@@ -10,19 +10,19 @@ use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 
-class ReviewPlanResource extends Resource
+class MemorizationPlanResource extends Resource
 {
     protected static ?string $model = ReviewPlan::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-calendar-days';
+    protected static ?string $navigationIcon = 'heroicon-o-bookmark-square';
     protected static ?string $navigationGroup = 'الخطط';
-    protected static ?int $navigationSort = 2;
-    protected static ?string $label = 'خطة مراجعة';
-    protected static ?string $pluralLabel = 'خطط المراجعة';
+    protected static ?int $navigationSort = 1;
+    protected static ?string $label = 'خطة حفظ';
+    protected static ?string $pluralLabel = 'خطط الحفظ';
 
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->where('type', 'review');
+        return parent::getEloquentQuery()->where('type', 'new');
     }
 
     public static function form(Form $form): Form
@@ -42,9 +42,6 @@ class ReviewPlanResource extends Resource
                 Tables\Columns\TextColumn::make('day_number')
                     ->label('رقم اليوم')
                     ->sortable(),
-
-                Tables\Columns\BadgeColumn::make('type')
-                    ->label('النوع'),
 
                 Tables\Columns\TextColumn::make('from_range')
                     ->label('من')
@@ -83,7 +80,7 @@ class ReviewPlanResource extends Resource
     public static function getPages(): array
     {
         return [
-            'index' => Pages\ListReviewPlans::route('/'),
+            'index' => Pages\ListMemorizationPlans::route('/'),
         ];
     }
 }
