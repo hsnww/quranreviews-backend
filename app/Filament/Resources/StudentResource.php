@@ -28,7 +28,48 @@ class StudentResource extends Resource
     {
         return $form
             ->schema([
-                //
+                Forms\Components\Select::make('user_id')
+                    ->label('المستخدم')
+                    ->relationship('user', 'name')
+                    ->searchable()
+                    ->preload()
+                    ->required(),
+
+                Forms\Components\TextInput::make('institution')
+                    ->label('الجهة التعليمية')
+                    ->maxLength(255),
+
+                Forms\Components\TextInput::make('phone')
+                    ->label('رقم الجوال')
+                    ->tel()
+                    ->maxLength(255),
+
+                Forms\Components\DatePicker::make('dob')
+                    ->label('تاريخ الميلاد'),
+
+                Forms\Components\TextInput::make('memorized_parts')
+                    ->label('الأجزاء المحفوظة')
+                    ->numeric()
+                    ->minValue(0)
+                    ->maxValue(30),
+
+                Forms\Components\TextInput::make('preferred_review_days')
+                    ->label('أيام دورة المراجعة')
+                    ->numeric()
+                    ->minValue(1),
+
+                Forms\Components\TextInput::make('review_quarters_per_day')
+                    ->label('مقدار المراجعة اليومي (أرباع)')
+                    ->numeric()
+                    ->minValue(1),
+
+                Forms\Components\Select::make('new_memorization_mode')
+                    ->label('نمط الحفظ الجديد')
+                    ->options([
+                        'quarter' => 'ربع',
+                        'half-quarter' => 'نصف ربع',
+                        'quarter-quarter' => 'ربع الربع',
+                    ]),
             ]);
     }
 
