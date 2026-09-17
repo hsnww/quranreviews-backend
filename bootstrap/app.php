@@ -16,8 +16,10 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->append(HandleCors::class);
 //        $middleware->append(\App\Http\Middleware\CorsMiddleware::class);
 
+        // حد عام للطلبات على مسارات api (معرَّف في AppServiceProvider).
+        $middleware->throttleApi('api');
+
         $middleware->alias([
-            'auth:sanctum' => \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
             'csrf' => \App\Http\Middleware\VerifyCsrfToken::class,
         ]);
     })

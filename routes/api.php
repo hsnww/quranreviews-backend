@@ -73,10 +73,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/review-plans/export/excel', [ReviewPlanExportController::class, 'exportExcel']);
     Route::get('/review-plans/export/pdf', [ReviewPlanExportController::class, 'exportPdf']);
 
-    Route::post('/login', [AuthController::class, 'login']);
-    Route::post('/register', [AuthController::class, 'register']);
-    Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
-    Route::post('/reset-password', [AuthController::class, 'resetPassword']);
+    // 'auth' = 5 محاولات في الدقيقة لكل IP ولكل بريد (AppServiceProvider).
+    Route::middleware('throttle:auth')->group(function () {
+        Route::post('/login', [AuthController::class, 'login']);
+        Route::post('/register', [AuthController::class, 'register']);
+        Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
+        Route::post('/reset-password', [AuthController::class, 'resetPassword']);
+    });
     Route::middleware('auth:sanctum')->get('/user', [AuthController::class, 'me']);
     Route::middleware('auth:sanctum')->put('/user', [AuthController::class, 'updateUser']);
     Route::middleware('auth:sanctum')->post('/logout', [AuthController::class, 'logout']);
