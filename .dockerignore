@@ -1,0 +1,17 @@
+vendor
+node_modules
+.env
+.env.*
+.git
+.idea
+.phpunit.result.cache
+docs
+storage/logs/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+storage/pail
+public/storage
+bootstrap/cache/*.php
+bootstrap/cache/*.tmp
+test_*.php

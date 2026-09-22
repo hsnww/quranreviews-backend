@@ -1,0 +1,56 @@
+# التطوير: الكود مربوط من المضيف، والتعديلات تظهر فورًا دون إعادة بناء.
+# للسرعة ضع المشروعين داخل نظام ملفات WSL (~/projects) وليس على C:\
+services:
+  backend:
+    build:
+      target: development
+      args:
+        USER_ID: ${USER_ID:-1000}
+        GROUP_ID: ${GROUP_ID:-1000}
+    image: quran-review-backend:dev
+    environment:
+      # OPcache مع فحص تعديل الملفات في كل طلب: سرعة دون الحاجة لإعادة التشغيل
+      PHP_OPCACHE_ENABLE: "1"
+      PHP_OPCACHE_REVALIDATE_FREQ: "0"
+    volumes:
+      - .:/var/www/html
+
+  # queue:work يحمّل الكود مرة واحدة؛ بعد تعديل الـ Jobs/Mail: docker compose restart queue
+  queue:
+    image: quran-review-backend:dev
+    volumes:
+      - .:/var/www/html
+
+  scheduler:
+    image: quran-review-backend:dev
+    volumes:
+      - .:/var/www/html
+
+  # للتطوير فقط؛ لا يُضاف في compose.prod.yaml
+  phpmyadmin:
+    image: phpmyadmin:5
+    restart: unless-stopped
+    environment:
+      PMA_HOST: mysql
+      PMA_USER: root
+      PMA_PASSWORD: ${DB_ROOT_PASSWORD}
+      UPLOAD_LIMIT: 512M
+    ports:
+      - "127.0.0.1:8080:80"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  frontend:
+    build:
+      target: development
+    image: quran-review-frontend:dev
+    environment:
+      BACKEND_INTERNAL_URL: http://backend:8080
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+      WATCHPACK_POLLING: ${WATCHPACK_POLLING:-false}
+    volumes:
+      - ../quran-review-frontend:/app
+      # تبقى من الصورة (Linux) ولا تُستبدل بنسخة المضيف
+      - /app/node_modules
+      - /app/.next
