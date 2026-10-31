@@ -65,6 +65,23 @@ class RecitationPlannerController extends Controller
     }
 
     /**
+     * يعدّل بيانات الخطة الوصفية (حالياً العنوان فقط)؛ العنوان الفارغ يُحفظ null.
+     */
+    public function updatePlan(Request $request, RecitationPlan $plan)
+    {
+        $this->authorizePlan($request, $plan);
+
+        $validated = $request->validate([
+            'title' => ['present', 'nullable', 'string', 'max:255'],
+        ]);
+
+        $title = trim((string) ($validated['title'] ?? ''));
+        $plan->update(['title' => $title === '' ? null : $title]);
+
+        return response()->json($plan->fresh());
+    }
+
+    /**
      * يدمج عدة خطط متتالية (متلاصقة زمنياً) في خطة واحدة تغطي كامل المدى،
      * ثم يحذف الخطط المصدر افتراضياً (أو يبقيها عند delete_sources=false).
      */

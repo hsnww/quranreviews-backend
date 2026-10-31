@@ -55,6 +55,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/recitation/plans', [RecitationPlannerController::class, 'storePlan']);
     Route::post('/recitation/plans/merge', [RecitationPlannerController::class, 'mergePlans']);
     Route::get('/recitation/plans/{plan}', [RecitationPlannerController::class, 'showPlan']);
+    Route::patch('/recitation/plans/{plan}', [RecitationPlannerController::class, 'updatePlan']);
     Route::delete('/recitation/plans/{plan}', [RecitationPlannerController::class, 'destroyPlan']);
     Route::post('/recitation/plans/{plan}/sessions', [RecitationPlannerController::class, 'upsertSessions']);
     Route::post('/recitation/sessions/{session}/segments', [RecitationPlannerController::class, 'storeSegment']);
