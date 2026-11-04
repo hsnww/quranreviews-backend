@@ -21,6 +21,8 @@ class ReviewPlanController extends Controller
             'plan.*.from_verse_id' => 'required|integer|exists:quran_verses,id',
             'plan.*.to_verse_id' => 'required|integer|exists:quran_verses,id',
             'plan.*.type' => 'nullable|in:review,new',
+            // صفوف «مراجعة السابق» المضمّنة في جدول الحفظ الجديد
+            'plan.*.is_revision' => 'nullable|boolean',
         ]);
 
         // استخراج النوع من أول عنصر أو تعيين 'review' كقيمة افتراضية
@@ -36,6 +38,7 @@ class ReviewPlanController extends Controller
                 'from_verse_id' => $day['from_verse_id'],
                 'to_verse_id' => $day['to_verse_id'],
                 'type' => $type,
+                'is_revision' => $type === 'new' && !empty($day['is_revision']),
             ]);
         }
 
@@ -51,7 +54,8 @@ class ReviewPlanController extends Controller
             ->reviewPlans()
             ->where('type', $type)
             ->orderBy('day_number')
-            ->get(['day_number', 'from_verse_id', 'to_verse_id', 'type']);
+            ->orderBy('id')
+            ->get(['day_number', 'from_verse_id', 'to_verse_id', 'type', 'is_revision']);
 
         $verseIds = $plans->pluck('from_verse_id')
             ->merge($plans->pluck('to_verse_id'))
@@ -70,6 +74,7 @@ class ReviewPlanController extends Controller
             return [
                 'day_number' => $plan->day_number,
                 'type' => $plan->type,
+                'is_revision' => (bool) $plan->is_revision,
                 'from' => $from ? [
                     'sora' => $from->surah->name ?? 'غير معروف',
                     'ayah_number' => $from->ayah,

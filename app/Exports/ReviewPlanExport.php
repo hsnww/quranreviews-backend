@@ -24,7 +24,8 @@ class ReviewPlanExport implements FromCollection, WithHeadings
     {
         $plans = ReviewPlan::where('student_id', $this->studentId)
             ->orderBy('day_number')
-            ->get(['day_number', 'from_verse_id', 'to_verse_id', 'type']);
+            ->orderBy('id')
+            ->get(['day_number', 'from_verse_id', 'to_verse_id', 'type', 'is_revision']);
 
         $verseIds = $plans->pluck('from_verse_id')
             ->merge($plans->pluck('to_verse_id'))
@@ -48,7 +49,7 @@ class ReviewPlanExport implements FromCollection, WithHeadings
                 'إلى (السورة)' => $to?->surah->name ?? 'غير معروف',
                 'إلى (رقم الآية)' => $to?->ayah ?? '-',
                 'إلى (نص الآية)' => $to ? $this->ayahExcerptService->excerptSmart($to->text) : '-',
-                'الدرس' => $plan->type === 'new' ? 'جديد' : 'مراجعة',
+                'الدرس' => $plan->type !== 'new' ? 'مراجعة' : ($plan->is_revision ? 'مراجعة السابق' : 'جديد'),
 
             ];
         });

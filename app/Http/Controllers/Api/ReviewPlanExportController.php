@@ -61,7 +61,8 @@ class ReviewPlanExportController extends Controller
 
         $plans = \App\Models\ReviewPlan::where('student_id', $student->id)
             ->orderBy('day_number')
-            ->get(['day_number', 'from_verse_id', 'to_verse_id', 'type']);
+            ->orderBy('id')
+            ->get(['day_number', 'from_verse_id', 'to_verse_id', 'type', 'is_revision']);
 
         $verseIds = $plans->pluck('from_verse_id')->merge($plans->pluck('to_verse_id'))->unique();
         $verses = \App\Models\QuranVerse::with('surah')->whereIn('id', $verseIds)->get()->keyBy('id');
@@ -72,7 +73,7 @@ class ReviewPlanExportController extends Controller
 
             return [
                 'day' => $plan->day_number,
-                'type' => $plan->type === 'new' ? 'جديد' : 'مراجعة', // ✅ مضاف
+                'type' => $plan->type !== 'new' ? 'مراجعة' : ($plan->is_revision ? 'مراجعة السابق' : 'جديد'),
                 'from_sora' => $from?->surah->name ?? 'غير معروف',
                 'from_ayah' => $from?->ayah ?? '-',
                 'from_text' => $from ? $this->ayahExcerptService->excerptSmart($from->text) : '-',

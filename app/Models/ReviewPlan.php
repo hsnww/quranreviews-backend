@@ -13,6 +13,11 @@ class ReviewPlan extends Model
         'from_verse_id',
         'to_verse_id',
         'type',
+        'is_revision',
+    ];
+
+    protected $casts = [
+        'is_revision' => 'boolean',
     ];
 
     public function student(): BelongsTo
