@@ -12,17 +12,21 @@ use Maatwebsite\Excel\Concerns\WithHeadings;
 class ReviewPlanExport implements FromCollection, WithHeadings
 {
     protected int $studentId;
+    /** review | new | null (الكل) */
+    protected ?string $type;
     private AyahExcerptService $ayahExcerptService;
 
-    public function __construct(int $studentId)
+    public function __construct(int $studentId, ?string $type = null)
     {
         $this->studentId = $studentId;
+        $this->type = $type;
         $this->ayahExcerptService = app(AyahExcerptService::class);
     }
 
     public function collection(): Collection
     {
         $plans = ReviewPlan::where('student_id', $this->studentId)
+            ->when($this->type, fn ($q) => $q->where('type', $this->type))
             ->orderBy('day_number')
             ->orderBy('id')
             ->get(['day_number', 'from_verse_id', 'to_verse_id', 'type', 'is_revision']);
@@ -49,7 +53,7 @@ class ReviewPlanExport implements FromCollection, WithHeadings
                 'إلى (السورة)' => $to?->surah->name ?? 'غير معروف',
                 'إلى (رقم الآية)' => $to?->ayah ?? '-',
                 'إلى (نص الآية)' => $to ? $this->ayahExcerptService->excerptSmart($to->text) : '-',
-                'الدرس' => $plan->type !== 'new' ? 'مراجعة' : ($plan->is_revision ? 'مراجعة السابق' : 'جديد'),
+                'الدرس' => $plan->type !== 'new' ? 'مراجعة بعيدة' : ($plan->is_revision ? 'مراجعة السابق' : 'جديد'),
 
             ];
         });

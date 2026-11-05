@@ -21,6 +21,31 @@ class ReviewPlanExportController extends Controller
         private AyahExcerptService $ayahExcerptService,
     ) {}
 
+    /** نوع الخطة المطلوب تصديرها: review (المراجعة البعيدة) أو new (الحفظ)، وnull للكل */
+    private function resolveType(Request $request): ?string
+    {
+        $type = $request->query('type');
+        return in_array($type, ['review', 'new'], true) ? $type : null;
+    }
+
+    private function planTitle(?string $type): string
+    {
+        return match ($type) {
+            'review' => 'جدول المراجعة البعيدة',
+            'new' => 'خطة الحفظ',
+            default => 'خطة المراجعة والحفظ',
+        };
+    }
+
+    private function fileBaseName(?string $type): string
+    {
+        return match ($type) {
+            'review' => 'distant-review-plan',
+            'new' => 'memorization-plan',
+            default => 'review-plan',
+        };
+    }
+
     public function exportExcel(Request $request)
     {
         $accessToken = $request->bearerToken() ?? $request->query('token');
@@ -37,8 +62,9 @@ class ReviewPlanExportController extends Controller
         }
 
         $student = $user->student;
-        $filename = 'review-plan.xlsx';
-        return Excel::download(new ReviewPlanExport($student->id), $filename);
+        $type = $this->resolveType($request);
+        $filename = $this->fileBaseName($type) . '.xlsx';
+        return Excel::download(new ReviewPlanExport($student->id, $type), $filename);
     }
 
     public function exportPdf(Request $request)
@@ -59,7 +85,10 @@ class ReviewPlanExportController extends Controller
 
         $student = $user->student;
 
+        $type = $this->resolveType($request);
+
         $plans = \App\Models\ReviewPlan::where('student_id', $student->id)
+            ->when($type, fn ($q) => $q->where('type', $type))
             ->orderBy('day_number')
             ->orderBy('id')
             ->get(['day_number', 'from_verse_id', 'to_verse_id', 'type', 'is_revision']);
@@ -73,7 +102,7 @@ class ReviewPlanExportController extends Controller
 
             return [
                 'day' => $plan->day_number,
-                'type' => $plan->type !== 'new' ? 'مراجعة' : ($plan->is_revision ? 'مراجعة السابق' : 'جديد'),
+                'type' => $plan->type !== 'new' ? 'مراجعة بعيدة' : ($plan->is_revision ? 'مراجعة السابق' : 'جديد'),
                 'from_sora' => $from?->surah->name ?? 'غير معروف',
                 'from_ayah' => $from?->ayah ?? '-',
                 'from_text' => $from ? $this->ayahExcerptService->excerptSmart($from->text) : '-',
@@ -89,6 +118,7 @@ class ReviewPlanExportController extends Controller
             'plans' => $detailedPlans,
             'studentName' => $studentName,
             'studentInstitution' => $studentInstitution,
+            'planTitle' => $this->planTitle($type),
         ])->render();
         $mpdf = new Mpdf([
             'mode' => 'utf-8',
@@ -106,7 +136,7 @@ class ReviewPlanExportController extends Controller
 
         return response($mpdf->Output('', 'S'), 200, [
             'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'attachment; filename="review-plan.pdf"',
+            'Content-Disposition' => 'attachment; filename="' . $this->fileBaseName($type) . '.pdf"',
         ]);
     }
 

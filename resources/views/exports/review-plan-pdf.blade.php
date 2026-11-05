@@ -2,13 +2,13 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
-    <title>خطة المراجعة</title>
+    <title>{{ $planTitle ?? 'خطة المراجعة والحفظ' }}</title>
 
     <style>
         @page {
             margin: 2cm 1.5cm;
             @top-center {
-                content: "خطة المراجعة والحفظ - {{ $studentName }}";
+                content: "{{ $planTitle ?? 'خطة المراجعة والحفظ' }} - {{ $studentName }}";
                 font-size: 12pt;
                 font-weight: bold;
             }
@@ -163,7 +163,7 @@
         @endif
 
         <div class="header">
-            <h1>خطة المراجعة والحفظ</h1>
+            <h1>{{ $planTitle ?? 'خطة المراجعة والحفظ' }}</h1>
             <div style="font-size: 12pt; margin-top: 5px;">
                 <span>الطالب: {{ $studentName }}</span>
                 <span> - </span>
