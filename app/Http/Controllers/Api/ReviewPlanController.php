@@ -23,6 +23,9 @@ class ReviewPlanController extends Controller
             'plan.*.type' => 'nullable|in:review,new',
             // صفوف «مراجعة السابق» المضمّنة في جدول الحفظ الجديد
             'plan.*.is_revision' => 'nullable|boolean',
+            // تاريخ اليوم في التقويم، ومراجعة الجمعة/السبت لدروس الأسبوع
+            'plan.*.date' => 'nullable|date_format:Y-m-d',
+            'plan.*.is_weekly_review' => 'nullable|boolean',
         ]);
 
         // استخراج النوع من أول عنصر أو تعيين 'review' كقيمة افتراضية
@@ -39,6 +42,8 @@ class ReviewPlanController extends Controller
                 'to_verse_id' => $day['to_verse_id'],
                 'type' => $type,
                 'is_revision' => $type === 'new' && !empty($day['is_revision']),
+                'date' => $day['date'] ?? null,
+                'is_weekly_review' => !empty($day['is_weekly_review']),
             ]);
         }
 
@@ -55,7 +60,7 @@ class ReviewPlanController extends Controller
             ->where('type', $type)
             ->orderBy('day_number')
             ->orderBy('id')
-            ->get(['day_number', 'from_verse_id', 'to_verse_id', 'type', 'is_revision']);
+            ->get(['day_number', 'date', 'from_verse_id', 'to_verse_id', 'type', 'is_revision', 'is_weekly_review']);
 
         $verseIds = $plans->pluck('from_verse_id')
             ->merge($plans->pluck('to_verse_id'))
@@ -75,6 +80,8 @@ class ReviewPlanController extends Controller
                 'day_number' => $plan->day_number,
                 'type' => $plan->type,
                 'is_revision' => (bool) $plan->is_revision,
+                'is_weekly_review' => (bool) $plan->is_weekly_review,
+                'date' => $plan->date?->format('Y-m-d'),
                 'from' => $from ? [
                     'sora' => $from->surah->name ?? 'غير معروف',
                     'ayah_number' => $from->ayah,

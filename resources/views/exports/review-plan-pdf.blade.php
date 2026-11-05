@@ -188,7 +188,12 @@
                 @foreach ($dayChunk as $day)
                     @foreach ($plansByDay[$day] as $plan)
                         <tr class="{{ $plan['type'] === 'جديد' ? 'new-lesson' : 'review-lesson' }}">
-                            <td class="day-cell">{{ $plan['day'] }}</td>
+                            <td class="day-cell">
+                                {{ $plan['day'] }}
+                                @if (!empty($plan['date']))
+                                    <br><span style="font-size: 9pt; font-weight: normal;">{{ $plan['date'] }}</span>
+                                @endif
+                            </td>
                             <td>{{ $plan['from_sora'] }}</td>
                             <td>{{ $plan['from_ayah'] }}</td>
                             <td class="verse-text">{{ $plan['from_text'] }}</td>

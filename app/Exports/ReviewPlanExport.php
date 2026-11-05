@@ -29,7 +29,7 @@ class ReviewPlanExport implements FromCollection, WithHeadings
             ->when($this->type, fn ($q) => $q->where('type', $this->type))
             ->orderBy('day_number')
             ->orderBy('id')
-            ->get(['day_number', 'from_verse_id', 'to_verse_id', 'type', 'is_revision']);
+            ->get(['day_number', 'date', 'from_verse_id', 'to_verse_id', 'type', 'is_revision', 'is_weekly_review']);
 
         $verseIds = $plans->pluck('from_verse_id')
             ->merge($plans->pluck('to_verse_id'))
@@ -47,13 +47,14 @@ class ReviewPlanExport implements FromCollection, WithHeadings
 
             return [
                 'اليوم' => $plan->day_number,
+                'التاريخ' => $plan->dateWithWeekday() ?? '-',
                 'من (السورة)' => $from?->surah->name ?? 'غير معروف',
                 'من (رقم الآية)' => $from?->ayah ?? '-',
                 'من (نص الآية)' => $from ? $this->ayahExcerptService->excerptSmart($from->text) : '-',
                 'إلى (السورة)' => $to?->surah->name ?? 'غير معروف',
                 'إلى (رقم الآية)' => $to?->ayah ?? '-',
                 'إلى (نص الآية)' => $to ? $this->ayahExcerptService->excerptSmart($to->text) : '-',
-                'الدرس' => $plan->type !== 'new' ? 'مراجعة بعيدة' : ($plan->is_revision ? 'مراجعة السابق' : 'جديد'),
+                'الدرس' => $plan->lessonLabel(),
 
             ];
         });
@@ -63,6 +64,7 @@ class ReviewPlanExport implements FromCollection, WithHeadings
     {
         return [
             'اليوم',
+            'التاريخ',
             'من (السورة)',
             'من (رقم الآية)',
             'من (نص الآية)',

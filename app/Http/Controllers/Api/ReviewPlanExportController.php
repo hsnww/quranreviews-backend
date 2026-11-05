@@ -91,7 +91,7 @@ class ReviewPlanExportController extends Controller
             ->when($type, fn ($q) => $q->where('type', $type))
             ->orderBy('day_number')
             ->orderBy('id')
-            ->get(['day_number', 'from_verse_id', 'to_verse_id', 'type', 'is_revision']);
+            ->get(['day_number', 'date', 'from_verse_id', 'to_verse_id', 'type', 'is_revision', 'is_weekly_review']);
 
         $verseIds = $plans->pluck('from_verse_id')->merge($plans->pluck('to_verse_id'))->unique();
         $verses = \App\Models\QuranVerse::with('surah')->whereIn('id', $verseIds)->get()->keyBy('id');
@@ -102,7 +102,8 @@ class ReviewPlanExportController extends Controller
 
             return [
                 'day' => $plan->day_number,
-                'type' => $plan->type !== 'new' ? 'مراجعة بعيدة' : ($plan->is_revision ? 'مراجعة السابق' : 'جديد'),
+                'date' => $plan->dateWithWeekday(),
+                'type' => $plan->lessonLabel(),
                 'from_sora' => $from?->surah->name ?? 'غير معروف',
                 'from_ayah' => $from?->ayah ?? '-',
                 'from_text' => $from ? $this->ayahExcerptService->excerptSmart($from->text) : '-',
