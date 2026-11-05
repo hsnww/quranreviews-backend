@@ -104,6 +104,7 @@ class ReviewPlanExportController extends Controller
                 'day' => $plan->day_number,
                 'date' => $plan->dateWithWeekday(),
                 'type' => $plan->lessonLabel(),
+                'kind' => $plan->lessonKind(),
                 'from_sora' => $from?->surah->name ?? 'غير معروف',
                 'from_ayah' => $from?->ayah ?? '-',
                 'from_text' => $from ? $this->ayahExcerptService->excerptSmart($from->text) : '-',
@@ -125,12 +126,14 @@ class ReviewPlanExportController extends Controller
             'mode' => 'utf-8',
             'format' => 'A4-L',
             'default_font' => 'xbriyaz',
-            'default_font_size' => 16,
+            'default_font_size' => 11,
             'margin_top' => 10,
-            'margin_bottom' => 10,
+            'margin_bottom' => 14,
             'margin_left' => 10,
             'margin_right' => 10,
+            'margin_footer' => 5,
         ]);
+        $mpdf->SetTitle($this->planTitle($type) . ' - ' . $studentName);
         $mpdf->SetDirectionality('rtl');
 
         $mpdf->WriteHTML($html);

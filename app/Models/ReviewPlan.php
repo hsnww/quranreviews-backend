@@ -38,6 +38,18 @@ class ReviewPlan extends Model
         return $this->is_revision ? 'مراجعة السابق' : 'جديد';
     }
 
+    /** مفتاح نوع الصف للتلوين: weekly | review | revision | new */
+    public function lessonKind(): string
+    {
+        if ($this->is_weekly_review) {
+            return 'weekly';
+        }
+        if ($this->type !== 'new') {
+            return 'review';
+        }
+        return $this->is_revision ? 'revision' : 'new';
+    }
+
     /** «الأحد 8/11/2026» أو null للخطط القديمة بلا تاريخ */
     public function dateWithWeekday(): ?string
     {
