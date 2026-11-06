@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\ArticleController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\NewChunksController;
 use App\Http\Controllers\Api\QuranController;
@@ -84,4 +85,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('auth:sanctum')->get('/user', [AuthController::class, 'me']);
     Route::middleware('auth:sanctum')->put('/user', [AuthController::class, 'updateUser']);
     Route::middleware('auth:sanctum')->post('/logout', [AuthController::class, 'logout']);
+
+    // مدونة الموقع — عامة للقراءة فقط
+    // طلبات الواجهة تأتي من سيرفر Next نفسه (IP واحد) مع تخزين مؤقت، فالحد واسع نسبيًا
+    Route::middleware('throttle:300,1')->group(function () {
+        Route::get('/articles', [ArticleController::class, 'index']);
+        Route::get('/articles/{slug}', [ArticleController::class, 'show'])->where('slug', '[^/]+');
+        Route::get('/article-categories', [ArticleController::class, 'categories']);
+        Route::get('/sitemap/articles', [ArticleController::class, 'sitemap']);
+    });
 

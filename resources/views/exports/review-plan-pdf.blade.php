@@ -158,7 +158,7 @@
     <table class="footer">
         <tr>
             <td style="text-align: right;">{{ $planTitle ?? 'خطة المراجعة والحفظ' }} — {{ $studentName ?? '' }}</td>
-            <td style="text-align: center;">{{ config('app.name', 'منصة مراجعة القرآن') }} · quranreview.app</td>
+            <td style="text-align: center;">تعاهُد · quranrevision.app</td>
             <td style="text-align: left;">صفحة {PAGENO} من {nbpg} · طُبع {{ \Carbon\Carbon::now()->format('Y/m/d') }}</td>
         </tr>
     </table>
