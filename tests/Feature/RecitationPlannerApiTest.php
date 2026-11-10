@@ -453,4 +453,45 @@ class RecitationPlannerApiTest extends TestCase
         $this->assertDatabaseMissing('recitation_segments', ['session_id' => $session->id]);
         $this->assertDatabaseMissing('recitation_history', ['session_id' => $session->id]);
     }
+
+    public function test_bookmark_prayer_tags_are_saved_updated_and_validated(): void
+    {
+        $this->seedSurah(78, 40);
+        $user = User::factory()->create();
+        Sanctum::actingAs($user);
+
+        $range = ['start_surah' => 78, 'start_ayah' => 1, 'end_surah' => 78, 'end_ayah' => 16];
+
+        // بلا وسوم: يُحفظ بمصفوفة فارغة
+        $this->postJson('/api/recitation/bookmarks', $range)
+            ->assertCreated()
+            ->assertJsonPath('prayer_tags', []);
+
+        // الوسوم تُرتَّب بترتيب الصلوات ويُزال تكرارها
+        $id = $this->postJson('/api/recitation/bookmarks', [
+            ...$range,
+            'prayer_tags' => ['isha', 'fajr', 'isha'],
+        ])->assertCreated()->assertJsonPath('prayer_tags', ['fajr', 'isha'])->json('id');
+
+        $this->postJson('/api/recitation/bookmarks', [...$range, 'prayer_tags' => ['dhuhr']])
+            ->assertStatus(422);
+
+        $this->patchJson("/api/recitation/bookmarks/{$id}", ['prayer_tags' => ['maghrib']])
+            ->assertOk()
+            ->assertJsonPath('prayer_tags', ['maghrib']);
+
+        $this->patchJson("/api/recitation/bookmarks/{$id}", ['prayer_tags' => []])
+            ->assertOk()
+            ->assertJsonPath('prayer_tags', []);
+
+        $this->patchJson("/api/recitation/bookmarks/{$id}", ['prayer_tags' => ['asr']])
+            ->assertStatus(422);
+
+        $this->getJson('/api/recitation/bookmarks')->assertOk()->assertJsonCount(2, 'data');
+
+        // مستخدم آخر لا يستطيع تعديل وسوم مقطع غيره
+        Sanctum::actingAs(User::factory()->create());
+        $this->patchJson("/api/recitation/bookmarks/{$id}", ['prayer_tags' => ['fajr']])
+            ->assertForbidden();
+    }
 }

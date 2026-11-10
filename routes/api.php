@@ -68,6 +68,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/recitation/surah-summary', [RecitationPlannerController::class, 'surahSummary']);
     Route::get('/recitation/bookmarks', [RecitationPlannerController::class, 'indexBookmarks']);
     Route::post('/recitation/bookmarks', [RecitationPlannerController::class, 'storeBookmark']);
+    Route::patch('/recitation/bookmarks/{bookmark}', [RecitationPlannerController::class, 'updateBookmark']);
     Route::delete('/recitation/bookmarks/{bookmark}', [RecitationPlannerController::class, 'destroyBookmark']);
 
 });

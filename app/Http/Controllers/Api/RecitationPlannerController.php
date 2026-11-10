@@ -260,10 +260,28 @@ class RecitationPlannerController extends Controller
 
         $bookmark = RecitationBookmark::query()->create([
             ...$payload,
+            'prayer_tags' => RecitationBookmark::normalizePrayerTags($payload['prayer_tags'] ?? []),
             'user_id' => (int) $request->user()->id,
         ]);
 
         return response()->json($bookmark, 201);
+    }
+
+    /** يعدّل وسوم الصلوات لمقطع محفوظ. */
+    public function updateBookmark(Request $request, RecitationBookmark $bookmark)
+    {
+        $this->authorizeBookmark($request, $bookmark);
+
+        $payload = $request->validate([
+            'prayer_tags' => ['present', 'array'],
+            'prayer_tags.*' => ['string', 'in:fajr,maghrib,isha'],
+        ]);
+
+        $bookmark->update([
+            'prayer_tags' => RecitationBookmark::normalizePrayerTags($payload['prayer_tags']),
+        ]);
+
+        return response()->json($bookmark);
     }
 
     public function destroyBookmark(Request $request, RecitationBookmark $bookmark)

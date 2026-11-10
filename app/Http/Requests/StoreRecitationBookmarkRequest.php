@@ -21,6 +21,8 @@ class StoreRecitationBookmarkRequest extends FormRequest
             'start_ayah' => ['required', 'integer', 'min:1'],
             'end_surah' => ['required', 'integer', 'min:1', 'max:114'],
             'end_ayah' => ['required', 'integer', 'min:1'],
+            'prayer_tags' => ['sometimes', 'array'],
+            'prayer_tags.*' => ['string', 'in:fajr,maghrib,isha'],
         ];
     }
 }
