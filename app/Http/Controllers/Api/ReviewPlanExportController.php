@@ -28,6 +28,23 @@ class ReviewPlanExportController extends Controller
         return in_array($type, ['review', 'new'], true) ? $type : null;
     }
 
+    /**
+     * الخطة المطلوبة للتصدير: plan_id إن أُرسل، وإلا أحدث خطة من النوع.
+     * يعيد [StudyPlan|null, Response|null]
+     */
+    private function resolvePlan(Request $request, $student, ?string $type): array
+    {
+        // بلا خطة ولا نوع: تصدير كل الصفوف كما كان سابقًا
+        if (!filled($request->query('plan_id')) && !$type) {
+            return [null, null];
+        }
+        $plan = ReviewPlanController::resolvePlan($student, $request->query('plan_id'), $type);
+        if ($plan === false) {
+            return [null, response()->json(['message' => 'الخطة غير موجودة.'], 404)];
+        }
+        return [$plan, null];
+    }
+
     private function planTitle(?string $type): string
     {
         return match ($type) {
@@ -63,8 +80,13 @@ class ReviewPlanExportController extends Controller
 
         $student = $user->student;
         $type = $this->resolveType($request);
+        [$plan, $error] = $this->resolvePlan($request, $student, $type);
+        if ($error) {
+            return $error;
+        }
+        $type = $plan?->type ?? $type;
         $filename = $this->fileBaseName($type) . '.xlsx';
-        return Excel::download(new ReviewPlanExport($student->id, $type), $filename);
+        return Excel::download(new ReviewPlanExport($student->id, $type, $plan?->id), $filename);
     }
 
     public function exportPdf(Request $request)
@@ -86,8 +108,15 @@ class ReviewPlanExportController extends Controller
         $student = $user->student;
 
         $type = $this->resolveType($request);
+        [$plan, $error] = $this->resolvePlan($request, $student, $type);
+        if ($error) {
+            return $error;
+        }
+        $type = $plan?->type ?? $type;
+        $planTitle = $plan ? $plan->displayTitle() : $this->planTitle($type);
 
         $plans = \App\Models\ReviewPlan::where('student_id', $student->id)
+            ->when($plan, fn ($q) => $q->where('study_plan_id', $plan->id))
             ->when($type, fn ($q) => $q->where('type', $type))
             ->orderBy('day_number')
             ->orderBy('id')
@@ -120,7 +149,7 @@ class ReviewPlanExportController extends Controller
             'plans' => $detailedPlans,
             'studentName' => $studentName,
             'studentInstitution' => $studentInstitution,
-            'planTitle' => $this->planTitle($type),
+            'planTitle' => $planTitle,
         ])->render();
         $mpdf = new Mpdf([
             'mode' => 'utf-8',
@@ -133,7 +162,7 @@ class ReviewPlanExportController extends Controller
             'margin_right' => 10,
             'margin_footer' => 5,
         ]);
-        $mpdf->SetTitle($this->planTitle($type) . ' - ' . $studentName);
+        $mpdf->SetTitle($planTitle . ' - ' . $studentName);
         $mpdf->SetDirectionality('rtl');
 
         $mpdf->WriteHTML($html);

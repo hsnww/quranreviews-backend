@@ -29,6 +29,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
 
 
+    Route::get('/review-plans', [ReviewPlanController::class, 'index']);
     Route::post('/review-plans', [ReviewPlanController::class, 'store']);
     Route::get('/review-plans/view', [ReviewPlanController::class, 'view']);
 
@@ -43,6 +44,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/verses/hizb/{hizb}', [QuranController::class, 'getByHizb']);
 
     Route::delete('/review-plans', [ReviewPlanController::class, 'destroy']);
+    Route::patch('/review-plans/{plan}', [ReviewPlanController::class, 'update'])->whereNumber('plan');
+    Route::delete('/review-plans/{plan}', [ReviewPlanController::class, 'destroyPlan'])->whereNumber('plan');
 
     Route::get('/quiz-sessions', [QuizSessionController::class, 'index']);
     Route::post('/quiz-sessions', [QuizSessionController::class, 'store'])

@@ -14,18 +14,22 @@ class ReviewPlanExport implements FromCollection, WithHeadings
     protected int $studentId;
     /** review | new | null (الكل) */
     protected ?string $type;
+    /** خطة بعينها (study_plans.id)؛ null = كل صفوف النوع */
+    protected ?int $studyPlanId;
     private AyahExcerptService $ayahExcerptService;
 
-    public function __construct(int $studentId, ?string $type = null)
+    public function __construct(int $studentId, ?string $type = null, ?int $studyPlanId = null)
     {
         $this->studentId = $studentId;
         $this->type = $type;
+        $this->studyPlanId = $studyPlanId;
         $this->ayahExcerptService = app(AyahExcerptService::class);
     }
 
     public function collection(): Collection
     {
         $plans = ReviewPlan::where('student_id', $this->studentId)
+            ->when($this->studyPlanId, fn ($q) => $q->where('study_plan_id', $this->studyPlanId))
             ->when($this->type, fn ($q) => $q->where('type', $this->type))
             ->orderBy('day_number')
             ->orderBy('id')

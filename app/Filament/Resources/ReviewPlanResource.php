@@ -39,6 +39,12 @@ class ReviewPlanResource extends Resource
                     ->searchable()
                     ->sortable(),
 
+                Tables\Columns\TextColumn::make('study_plan')
+                    ->label('الخطة')
+                    ->getStateUsing(fn (ReviewPlan $record): string => $record->studyPlan
+                        ? $record->studyPlan->displayTitle() . ($record->studyPlan->start_date ? ' (' . $record->studyPlan->start_date->format('Y-m-d') . ')' : '')
+                        : '—'),
+
                 Tables\Columns\TextColumn::make('day_number')
                     ->label('رقم اليوم')
                     ->sortable(),

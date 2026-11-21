@@ -9,6 +9,7 @@ class ReviewPlan extends Model
 {
     protected $fillable = [
         'student_id',
+        'study_plan_id',
         'day_number',
         'from_verse_id',
         'to_verse_id',
@@ -62,6 +63,11 @@ class ReviewPlan extends Model
     public function student(): BelongsTo
     {
         return $this->belongsTo(Student::class);
+    }
+
+    public function studyPlan(): BelongsTo
+    {
+        return $this->belongsTo(StudyPlan::class);
     }
 
     public function fromVerse(): BelongsTo

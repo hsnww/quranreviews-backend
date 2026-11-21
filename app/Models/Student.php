@@ -40,6 +40,11 @@ class Student extends Model
         return $this->hasMany(ReviewPlan::class);
     }
 
+    public function studyPlans()
+    {
+        return $this->hasMany(StudyPlan::class);
+    }
+
 
 
 }
